@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 const SUPABASE_URL = 'https://dsrrpc1u.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL,
