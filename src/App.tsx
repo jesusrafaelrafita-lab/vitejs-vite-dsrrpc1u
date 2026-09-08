@@ -12,9 +12,8 @@ import {
   TrendingUp 
 } from 'lucide-react';
 
-// Credenciales integradas
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dsrrpc1u.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
+const SUPABASE_URL = 'https://dsrrpc1u.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -60,13 +59,16 @@ export default function App() {
       const { data: recs } = await supabase.from('recurrentes').select('*');
       const { data: aparts } = await supabase.from('apartados').select('*');
 
-      if (errMovs) throw errMovs;
+      if (errMovs) {
+        console.error('Error Supabase Movimientos:', errMovs);
+      } else if (movs) {
+        setMovimientos(movs);
+      }
 
-      if (movs) setMovimientos(movs);
       if (recs) setRecurrentes(recs);
       if (aparts) setApartados(aparts);
     } catch (err) {
-      console.error('Error al cargar datos:', err);
+      console.error('Error de red al conectar con Supabase:', err);
     } finally {
       setLoading(false);
     }
@@ -87,15 +89,30 @@ export default function App() {
     if (!nuevoMovimiento.monto) return;
 
     try {
-      const { data, error } = await supabase.from('movimientos').insert([
-        { ...nuevoMovimiento, monto: parseFloat(nuevoMovimiento.monto), dispositivo }
-      ]).select();
+      const payload = {
+        monto: parseFloat(nuevoMovimiento.monto),
+        tipo: nuevoMovimiento.tipo,
+        categoria: nuevoMovimiento.categoria,
+        descripcion: nuevoMovimiento.descripcion,
+        dispositivo: dispositivo
+      };
 
-      if (error) throw error;
-      setMovimientos([data[0], ...movimientos]);
-      setNuevoMovimiento({ monto: '', tipo: 'gasto', categoria: 'Comida', descripcion: '' });
+      const { data, error } = await supabase
+        .from('movimientos')
+        .insert([payload])
+        .select();
+
+      if (error) {
+        alert(`Error Supabase (${error.code}): ${error.message}`);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        setMovimientos([data[0], ...movimientos]);
+        setNuevoMovimiento({ monto: '', tipo: 'gasto', categoria: 'Comida', descripcion: '' });
+      }
     } catch (err) {
-      alert('Error al guardar el registro: ' + err.message);
+      alert('Error de red/conexión: ' + err.message + '. Revisa si un AdBlocker o la política RLS de Supabase está bloqueando la petición.');
     }
   };
 
