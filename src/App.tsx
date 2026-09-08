@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Wallet, ArrowUpCircle, ArrowDownCircle, 
-  Smartphone, FolderPlus, Clock, Layers, Edit2, Trash2, CheckCircle2, XCircle
+  Smartphone, FolderPlus, Clock, Layers, Edit2, Trash2, CheckCircle2
 } from 'lucide-react';
 
 // --------------------------------------------------
@@ -54,7 +54,7 @@ interface Recurrente {
   categoria: string;
   proxima_fecha?: string;
   ultimo_procesado?: string;
-  // Campos locales dinamicos parsed
+  // Campos locales dinámicos
   esConstante?: boolean;
   diasSemana?: number[];
   hora24?: string;
@@ -136,7 +136,6 @@ export default function App() {
   const fetchRecurrentes = async () => {
     const { data, error } = await supabase.from('recurrentes').select('*');
     if (data) {
-      // Parsear información extendida desde 'frecuencia' o campos de respaldo
       const procesados = data.map(item => {
         let esConstanteVal = true;
         let diasVal = [3];
