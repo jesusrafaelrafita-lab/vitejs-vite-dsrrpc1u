@@ -1,29 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  PlusCircle, 
-  MinusCircle, 
-  Wallet, 
   PieChart, 
   Calendar, 
   Target, 
   Trash2, 
-  ArrowUpRight,
-  ArrowDownRight,
-  User,
-  Plus,
-  CreditCard,
-  TrendingDown,
-  TrendingUp
+  ArrowUpRight, 
+  ArrowDownRight, 
+  CreditCard, 
+  TrendingDown, 
+  TrendingUp 
 } from 'lucide-react';
 
-const SUPABASE_URL = 'https://dsrrpc1u.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
+// Credenciales integradas
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dsrrpc1u.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY
-);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -63,9 +56,11 @@ export default function App() {
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      const { data: movs } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
+      const { data: movs, error: errMovs } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
       const { data: recs } = await supabase.from('recurrentes').select('*');
       const { data: aparts } = await supabase.from('apartados').select('*');
+
+      if (errMovs) throw errMovs;
 
       if (movs) setMovimientos(movs);
       if (recs) setRecurrentes(recs);
@@ -190,7 +185,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0F172A] text-slate-100 font-sans pb-28 antialiased">
-      {/* HEADER TIPO NEON BANK */}
+      {/* HEADER BANCA MÓVIL */}
       <header className="bg-[#1E293B]/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-5 py-4">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -338,6 +333,9 @@ export default function App() {
             <div className="space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Actividad Reciente</h3>
               <div className="space-y-2.5">
+                {movimientos.length === 0 && !loading && (
+                  <p className="text-center text-xs text-slate-500 py-4">No hay registros guardados aún.</p>
+                )}
                 {movimientos.slice(0, 5).map((m) => (
                   <div key={m.id} className="bg-[#1E293B] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -406,7 +404,7 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* BARRA DE PROGRESO BANCA */}
+                    {/* BARRA DE PROGRESO */}
                     <div className="space-y-1">
                       <div className="w-full bg-[#0F172A] h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
                         <div 
