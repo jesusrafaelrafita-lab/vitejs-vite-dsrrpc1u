@@ -10,10 +10,11 @@ import {
   Trash2, 
   ArrowUpRight,
   ArrowDownRight,
-  Sparkles,
-  TrendingUp,
   User,
-  Plus
+  Plus,
+  CreditCard,
+  TrendingDown,
+  TrendingUp
 } from 'lucide-react';
 
 const SUPABASE_URL = 'https://dsrrpc1u.supabase.co';
@@ -28,13 +29,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dispositivo, setDispositivo] = useState('Él');
   
-  // Estados de datos
   const [movimientos, setMovimientos] = useState([]);
   const [recurrentes, setRecurrentes] = useState([]);
   const [apartados, setApartados] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Formularios
   const [nuevoMovimiento, setNuevoMovimiento] = useState({
     monto: '',
     tipo: 'gasto',
@@ -78,7 +77,6 @@ export default function App() {
     }
   };
 
-  // --- CÁLCULOS ---
   const totalIngresos = movimientos
     .filter(m => m.tipo === 'ingreso')
     .reduce((acc, m) => acc + Number(m.monto), 0);
@@ -89,7 +87,6 @@ export default function App() {
 
   const balanceGeneral = totalIngresos - totalGastos;
 
-  // --- ACCIONES ---
   const handleGuardarMovimiento = async (e) => {
     e.preventDefault();
     if (!nuevoMovimiento.monto) return;
@@ -192,122 +189,125 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-slate-100 font-sans pb-24 selection:bg-emerald-500 selection:text-black">
-      {/* HEADER ELEGANTE */}
-      <header className="bg-[#161b22]/80 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-20 px-4 py-3.5">
+    <div className="min-h-screen bg-[#0F172A] text-slate-100 font-sans pb-28 antialiased">
+      {/* HEADER TIPO NEON BANK */}
+      <header className="bg-[#1E293B]/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-5 py-4">
         <div className="max-w-md mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
-              <Wallet size={20} />
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
+              <CreditCard size={20} />
             </div>
             <div>
-              <h1 className="font-bold text-base text-white leading-none">Finanzas</h1>
-              <span className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">Compartidas</span>
+              <h1 className="font-bold text-sm tracking-tight text-white">Banca Compartida</h1>
+              <span className="text-[11px] text-slate-400">Cuenta Principal</span>
             </div>
           </div>
-          
-          {/* SELECTOR DE USUARIO */}
-          <div className="flex bg-[#0d1117] p-1 rounded-xl border border-slate-800">
+
+          {/* PERFIL SELECTOR */}
+          <div className="flex bg-[#0F172A] p-1 rounded-full border border-slate-800">
             <button 
               onClick={() => setDispositivo('Él')}
-              className={`px-3 py-1 text-xs rounded-lg font-semibold transition-all duration-200 flex items-center gap-1 ${dispositivo === 'Él' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md shadow-emerald-500/20' : 'text-slate-400 hover:text-white'}`}
+              className={`px-3 py-1 text-xs rounded-full font-semibold transition-all ${dispositivo === 'Él' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400'}`}
             >
-              <User size={12} /> Él
+              Él
             </button>
             <button 
               onClick={() => setDispositivo('Ella')}
-              className={`px-3 py-1 text-xs rounded-lg font-semibold transition-all duration-200 flex items-center gap-1 ${dispositivo === 'Ella' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md shadow-emerald-500/20' : 'text-slate-400 hover:text-white'}`}
+              className={`px-3 py-1 text-xs rounded-full font-semibold transition-all ${dispositivo === 'Ella' ? 'bg-emerald-500 text-slate-950 shadow' : 'text-slate-400'}`}
             >
-              <User size={12} /> Ella
+              Ella
             </button>
           </div>
         </div>
       </header>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="max-w-md mx-auto p-4 space-y-6">
+      <main className="max-w-md mx-auto px-4 pt-5 space-y-6">
 
-        {/* TARJETA DE BALANCE PRINCIPAL */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#161b22] via-[#1c2128] to-[#161b22] p-6 rounded-3xl border border-slate-800 shadow-2xl shadow-emerald-950/10">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
-          
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Balance Total</span>
-            <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              <Sparkles size={10} /> Activo
+        {/* TARJETA BANCARIA DE BALANCE */}
+        <div className="relative bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#1E293B] p-6 rounded-3xl border border-slate-800 shadow-2xl">
+          <div className="flex justify-between items-center text-xs font-semibold text-slate-400 uppercase tracking-widest">
+            <span>Balance Disponible</span>
+            <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              ● En línea
             </span>
           </div>
 
-          <div className="text-3xl sm:text-4xl font-black text-white tracking-tight my-2">
+          <div className="text-4xl font-extrabold text-white my-3 tracking-tight">
             ${balanceGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
           </div>
-          
-          <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-800/80">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
-                <ArrowUpRight size={18} />
+
+          {/* RESUMEN INGRESOS Y GASTOS */}
+          <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-800/80">
+            <div className="flex items-center gap-3 bg-[#0F172A]/60 p-2.5 rounded-2xl border border-slate-800/50">
+              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                <TrendingUp size={16} />
               </div>
               <div>
-                <div className="text-[11px] text-slate-400 font-medium">Ingresos</div>
-                <div className="text-sm font-bold text-emerald-400">+${totalIngresos.toLocaleString()}</div>
+                <p className="text-[10px] uppercase font-bold text-slate-400">Ingresos</p>
+                <p className="text-xs font-bold text-emerald-400">+${totalIngresos.toLocaleString()}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">
-                <ArrowDownRight size={18} />
+            <div className="flex items-center gap-3 bg-[#0F172A]/60 p-2.5 rounded-2xl border border-slate-800/50">
+              <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400">
+                <TrendingDown size={16} />
               </div>
               <div>
-                <div className="text-[11px] text-slate-400 font-medium">Gastos</div>
-                <div className="text-sm font-bold text-rose-400">-${totalGastos.toLocaleString()}</div>
+                <p className="text-[10px] uppercase font-bold text-slate-400">Gastos</p>
+                <p className="text-xs font-bold text-rose-400">-${totalGastos.toLocaleString()}</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* VISTA 1: DASHBOARD / REGISTRO */}
+        {/* CONTENIDO POR PESTAÑA */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            <form onSubmit={handleGuardarMovimiento} className="bg-[#161b22] p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
-              <h2 className="font-semibold text-xs tracking-wider uppercase text-slate-400">Nuevo Movimiento</h2>
-              
-              <div className="flex bg-[#0d1117] p-1 rounded-xl border border-slate-800 gap-1">
+            {/* REGISTRO RÁPIDO */}
+            <form onSubmit={handleGuardarMovimiento} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Nuevo Movimiento</h2>
+                <span className="text-[11px] text-slate-400">Registrando como <b className="text-emerald-400">{dispositivo}</b></span>
+              </div>
+
+              {/* TOGGLE TIPO */}
+              <div className="grid grid-cols-2 gap-2 bg-[#0F172A] p-1 rounded-2xl border border-slate-800">
                 <button
                   type="button"
                   onClick={() => setNuevoMovimiento({ ...nuevoMovimiento, tipo: 'gasto' })}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${nuevoMovimiento.tipo === 'gasto' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'text-slate-400 hover:text-white'}`}
+                  className={`py-2 text-xs font-bold rounded-xl transition ${nuevoMovimiento.tipo === 'gasto' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400'}`}
                 >
-                  <MinusCircle size={15} /> Gasto
+                  Gasto
                 </button>
                 <button
                   type="button"
                   onClick={() => setNuevoMovimiento({ ...nuevoMovimiento, tipo: 'ingreso' })}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all ${nuevoMovimiento.tipo === 'ingreso' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:text-white'}`}
+                  className={`py-2 text-xs font-bold rounded-xl transition ${nuevoMovimiento.tipo === 'ingreso' ? 'bg-emerald-500 text-slate-950 shadow-lg' : 'text-slate-400'}`}
                 >
-                  <PlusCircle size={15} /> Ingreso
+                  Ingreso
                 </button>
               </div>
 
-              <div>
-                <div className="relative flex items-center">
-                  <span className="absolute left-3.5 text-lg font-bold text-slate-500">$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={nuevoMovimiento.monto}
-                    onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, monto: e.target.value })}
-                    className="w-full bg-[#0d1117] border border-slate-800 rounded-xl p-3 pl-8 text-2xl font-black text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 transition"
-                    required
-                  />
-                </div>
+              {/* CAMPO DE MONTO TIPO APP BANCA */}
+              <div className="relative flex items-center">
+                <span className="absolute left-4 text-xl font-bold text-slate-500">$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={nuevoMovimiento.monto}
+                  onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, monto: e.target.value })}
+                  className="w-full bg-[#0F172A] border border-slate-800 rounded-2xl py-3 pl-9 pr-4 text-2xl font-black text-white focus:outline-none focus:border-emerald-500 transition"
+                  required
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">
                 <select
                   value={nuevoMovimiento.categoria}
                   onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, categoria: e.target.value })}
-                  className="bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-medium focus:outline-none focus:border-emerald-500/50"
+                  className="bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="Comida">Comida</option>
                   <option value="Super">Súper</option>
@@ -322,41 +322,38 @@ export default function App() {
                   placeholder="Nota (opcional)"
                   value={nuevoMovimiento.descripcion}
                   onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, descripcion: e.target.value })}
-                  className="bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
+                  className="bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 font-bold text-slate-950 py-3 rounded-xl transition shadow-lg shadow-emerald-500/10 text-sm"
+                className="w-full bg-emerald-500 hover:bg-emerald-400 font-bold text-slate-950 py-3.5 rounded-2xl text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-500/20"
               >
-                Guardar Registro
+                Confirmar Transacción
               </button>
             </form>
 
-            {/* HISTORIAL */}
+            {/* HISTORIAL TIPO BANCA */}
             <div className="space-y-3">
-              <div className="flex justify-between items-center px-1">
-                <h3 className="font-semibold text-xs tracking-wider uppercase text-slate-400">Historial Reciente</h3>
-                <span className="text-[11px] text-slate-500">{movimientos.length} registros</span>
-              </div>
-              <div className="space-y-2">
-                {movimientos.slice(0, 6).map((m) => (
-                  <div key={m.id} className="bg-[#161b22] border border-slate-800/80 p-3.5 rounded-2xl flex justify-between items-center hover:border-slate-700 transition">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Actividad Reciente</h3>
+              <div className="space-y-2.5">
+                {movimientos.slice(0, 5).map((m) => (
+                  <div key={m.id} className="bg-[#1E293B] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-xl text-xs ${m.tipo === 'ingreso' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {m.tipo === 'ingreso' ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs ${m.tipo === 'ingreso' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                        {m.tipo === 'ingreso' ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
                       </div>
                       <div>
-                        <div className="font-bold text-sm text-white">{m.categoria}</div>
-                        <div className="text-[11px] text-slate-400">{m.descripcion || `Registrado por ${m.dispositivo}`}</div>
+                        <p className="font-bold text-sm text-white">{m.categoria}</p>
+                        <p className="text-[11px] text-slate-400">{m.descripcion || m.dispositivo}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`font-black text-sm ${m.tipo === 'ingreso' ? 'text-emerald-400' : 'text-slate-200'}`}>
+                      <span className={`font-black text-sm ${m.tipo === 'ingreso' ? 'text-emerald-400' : 'text-slate-100'}`}>
                         {m.tipo === 'ingreso' ? '+' : '-'}${Number(m.monto).toLocaleString()}
                       </span>
-                      <button onClick={() => eliminarMovimiento(m.id)} className="text-slate-600 hover:text-rose-400 transition p-1">
+                      <button onClick={() => eliminarMovimiento(m.id)} className="text-slate-600 hover:text-rose-400 transition">
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -367,29 +364,29 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA 2: APARTADOS */}
+        {/* VISTA APARTADOS */}
         {activeTab === 'apartados' && (
           <div className="space-y-6">
-            <form onSubmit={handleGuardarApartado} className="bg-[#161b22] p-5 rounded-2xl border border-slate-800 space-y-3 shadow-xl">
-              <h2 className="font-semibold text-xs tracking-wider uppercase text-slate-400">Nuevo Apartado</h2>
+            <form onSubmit={handleGuardarApartado} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Crear Nueva Bóveda / Meta</h2>
               <input
                 type="text"
-                placeholder="Nombre de la meta (ej. Vacaciones)"
+                placeholder="Nombre de la meta"
                 value={nuevoApartado.nombre}
                 onChange={(e) => setNuevoApartado({ ...nuevoApartado, nombre: e.target.value })}
-                className="w-full bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 required
               />
               <input
                 type="number"
-                placeholder="Meta de ahorro $"
+                placeholder="Meta $"
                 value={nuevoApartado.meta}
                 onChange={(e) => setNuevoApartado({ ...nuevoApartado, meta: e.target.value })}
-                className="w-full bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 required
               />
-              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-xs transition border border-slate-700">
-                + Crear Meta
+              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs border border-slate-700">
+                + Crear Bóveda
               </button>
             </form>
 
@@ -398,47 +395,42 @@ export default function App() {
                 const porcentaje = Math.min(Math.round(((item.actual || 0) / item.meta) * 100), 100);
 
                 return (
-                  <div key={item.id} className="bg-[#161b22] p-5 rounded-2xl border border-slate-800 space-y-3 shadow-xl relative overflow-hidden">
+                  <div key={item.id} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
                     <div className="flex justify-between items-start">
                       <div>
                         <h3 className="font-bold text-white text-base">{item.nombre}</h3>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Faltan: ${(item.meta - (item.actual || 0)).toLocaleString()}
-                        </div>
+                        <p className="text-[11px] text-slate-400">Meta: ${Number(item.meta).toLocaleString()}</p>
                       </div>
-                      <span className="text-xs font-bold bg-slate-800 px-2.5 py-1 rounded-lg text-emerald-400 border border-slate-700">
-                        ${(item.actual || 0).toLocaleString()} / ${Number(item.meta).toLocaleString()}
+                      <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                        ${(item.actual || 0).toLocaleString()}
                       </span>
                     </div>
 
-                    {/* Barra de Progreso Mejorada */}
+                    {/* BARRA DE PROGRESO BANCA */}
                     <div className="space-y-1">
-                      <div className="w-full bg-[#0d1117] h-3 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                      <div className="w-full bg-[#0F172A] h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
                         <div 
-                          className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500 shadow-sm shadow-emerald-500/50"
+                          className="bg-emerald-500 h-full rounded-full transition-all duration-300"
                           style={{ width: `${porcentaje}%` }}
                         ></div>
                       </div>
-                      <div className="flex justify-end text-[10px] font-bold text-slate-500">
-                        {porcentaje}% completado
-                      </div>
+                      <p className="text-[10px] text-slate-400 text-right font-bold">{porcentaje}% alcanzado</p>
                     </div>
 
-                    {/* Campo Personalizado y Botón */}
-                    <div className="flex gap-2 pt-1">
+                    {/* ABONAR PERSONALIZADO */}
+                    <div className="flex gap-2">
                       <input
                         type="number"
-                        placeholder="Cantidad a abonar $"
+                        placeholder="Monto a transferir $"
                         value={montosApartados[item.id] || ''}
                         onChange={(e) => setMontosApartados({ ...montosApartados, [item.id]: e.target.value })}
-                        className="flex-1 bg-[#0d1117] border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
-                        min="1"
+                        className="flex-1 bg-[#0F172A] border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                       />
                       <button
                         onClick={() => handleAbonarApartado(item)}
-                        className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs whitespace-nowrap transition shadow-lg shadow-emerald-500/10 flex items-center gap-1"
+                        className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs whitespace-nowrap transition"
                       >
-                        <Plus size={14} /> Ingresar
+                        Abonar
                       </button>
                     </div>
                   </div>
@@ -448,17 +440,17 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA 3: RECURRENTES */}
+        {/* VISTA RECURRENTES */}
         {activeTab === 'recurrentes' && (
           <div className="space-y-6">
-            <form onSubmit={handleGuardarRecurrente} className="bg-[#161b22] p-5 rounded-2xl border border-slate-800 space-y-3 shadow-xl">
-              <h2 className="font-semibold text-xs tracking-wider uppercase text-slate-400">Nuevo Movimiento Recurrente</h2>
+            <form onSubmit={handleGuardarRecurrente} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Programar Cargo / Ingreso</h2>
               <input
                 type="text"
-                placeholder="Título (ej. Renta, Netflix)"
+                placeholder="Concepto (ej. Renta, Trabajo)"
                 value={nuevoRecurrente.titulo}
                 onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, titulo: e.target.value })}
-                className="w-full bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 required
               />
               <div className="grid grid-cols-2 gap-2">
@@ -467,34 +459,34 @@ export default function App() {
                   placeholder="Monto $"
                   value={nuevoRecurrente.monto}
                   onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, monto: e.target.value })}
-                  className="bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50"
+                  className="bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                   required
                 />
                 <select
                   value={nuevoRecurrente.frecuencia}
                   onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, frecuencia: e.target.value })}
-                  className="bg-[#0d1117] border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500/50"
+                  className="bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="semanal">Semanal</option>
                   <option value="quincenal">Quincenal</option>
                   <option value="mensual">Mensual</option>
                 </select>
               </div>
-              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-xs transition border border-slate-700">
-                + Guardar Recurrente
+              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs border border-slate-700">
+                Guardar Programación
               </button>
             </form>
 
             <div className="space-y-2.5">
               {recurrentes.map((r) => (
-                <div key={r.id} className="bg-[#161b22] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+                <div key={r.id} className="bg-[#1E293B] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
                   <div>
-                    <div className="font-bold text-white text-sm">{r.titulo}</div>
-                    <div className="text-[11px] text-slate-400 capitalize mt-0.5">Frecuencia: {r.frecuencia}</div>
+                    <p className="font-bold text-white text-sm">{r.titulo}</p>
+                    <p className="text-[11px] text-slate-400 capitalize">Frecuencia {r.frecuencia}</p>
                   </div>
-                  <div className="font-black text-emerald-400 text-sm bg-emerald-500/10 px-3 py-1 rounded-xl border border-emerald-500/20">
+                  <span className="font-black text-emerald-400 text-sm bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
                     ${Number(r.monto).toLocaleString()}
-                  </div>
+                  </span>
                 </div>
               ))}
             </div>
@@ -502,26 +494,26 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR ESTILO FLOTANTE */}
-      <nav className="fixed bottom-3 left-1/2 -translate-x-1/2 w-[92%] max-w-md bg-[#161b22]/90 backdrop-blur-lg border border-slate-800/90 p-1.5 rounded-2xl shadow-2xl z-30">
-        <div className="flex justify-around items-center">
+      {/* BARRA DE NAVEGACIÓN INFERIOR ESTILO BANCA MÓVIL */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-[#1E293B]/90 backdrop-blur-md border-t border-slate-800 py-3 px-6 z-30">
+        <div className="max-w-md mx-auto flex justify-around items-center">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center gap-1 px-5 py-2 rounded-xl text-[11px] font-bold transition-all duration-200 ${activeTab === 'dashboard' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:text-white'}`}
+            className={`flex flex-col items-center gap-1 text-[10px] font-bold transition ${activeTab === 'dashboard' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <PieChart size={18} /> Resumen
+            <PieChart size={20} /> Inicio
           </button>
           <button
             onClick={() => setActiveTab('apartados')}
-            className={`flex flex-col items-center gap-1 px-5 py-2 rounded-xl text-[11px] font-bold transition-all duration-200 ${activeTab === 'apartados' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:text-white'}`}
+            className={`flex flex-col items-center gap-1 text-[10px] font-bold transition ${activeTab === 'apartados' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Target size={18} /> Apartados
+            <Target size={20} /> Bóvedas
           </button>
           <button
             onClick={() => setActiveTab('recurrentes')}
-            className={`flex flex-col items-center gap-1 px-5 py-2 rounded-xl text-[11px] font-bold transition-all duration-200 ${activeTab === 'recurrentes' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:text-white'}`}
+            className={`flex flex-col items-center gap-1 text-[10px] font-bold transition ${activeTab === 'recurrentes' ? 'text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Calendar size={18} /> Recurrentes
+            <Calendar size={20} /> Pagos
           </button>
         </div>
       </nav>
