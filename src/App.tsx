@@ -12,8 +12,9 @@ import {
   TrendingUp 
 } from 'lucide-react';
 
-const SUPABASE_URL = 'https://dsrrpc1u.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
+// Credenciales corregidas
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://hglxhzxtwkxzefbfelkj.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -112,7 +113,7 @@ export default function App() {
         setNuevoMovimiento({ monto: '', tipo: 'gasto', categoria: 'Comida', descripcion: '' });
       }
     } catch (err) {
-      alert('Error de red/conexión: ' + err.message + '. Revisa si un AdBlocker o la política RLS de Supabase está bloqueando la petición.');
+      alert('Error de red/conexión: ' + err.message);
     }
   };
 
