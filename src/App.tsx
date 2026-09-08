@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  Wallet, ArrowUpCircle, ArrowDownCircle, Plus, Calendar, 
-  Smartphone, FolderPlus, Clock, Layers
+  Wallet, ArrowUpCircle, ArrowDownCircle, 
+  Smartphone, FolderPlus, Clock, Layers, Edit2, Trash2, CheckCircle2, XCircle
 } from 'lucide-react';
 
 // --------------------------------------------------
@@ -50,12 +50,14 @@ interface Recurrente {
   titulo: string;
   monto: number;
   tipo: 'ingreso' | 'gasto';
-  frecuencia: string; // 'dias_semana'
-  dias_semana?: number[]; // Array de números [1, 3] = Lun, Mié
-  hora_programada?: string; // Formato HH:mm
+  frecuencia: string;
   categoria: string;
   proxima_fecha?: string;
   ultimo_procesado?: string;
+  // Campos locales dinamicos parsed
+  esConstante?: boolean;
+  diasSemana?: number[];
+  hora24?: string;
 }
 
 interface Apartado {
@@ -70,19 +72,20 @@ export default function App() {
   const [recurrentes, setRecurrentes] = useState<Recurrente[]>([]);
   const [apartados, setApartados] = useState<Apartado[]>([]);
 
-  // Formulario de Movimiento Rápido
+  // Formulario de Movimiento Rápido (Gastos / Ingresos)
   const [monto, setMonto] = useState('');
   const [tipo, setTipo] = useState<'ingreso' | 'gasto'>('gasto');
   const [categoria, setCategoria] = useState(CATEGORIAS_GASTO[0]);
   const [descripcion, setDescripcion] = useState('');
   const [dispositivo, setDispositivo] = useState<string>(
-    localStorage.getItem('finanzas_dispositivo') || 'Móvil 1'
+    localStorage.getItem('finanzas_dispositivo') || 'Él'
   );
 
-  // Formulario de Programados / Recurrentes (Entradas/Salidas)
+  // Formulario de Programados / Entradas de Dinero
+  const [idEditando, setIdEditando] = useState<string | null>(null);
   const [tituloRecurrente, setTituloRecurrente] = useState('');
   const [montoRecurrente, setMontoRecurrente] = useState('');
-  const [tipoRecurrente] = useState<'ingreso' | 'gasto'>('ingreso');
+  const [esConstante, setEsConstante] = useState<boolean>(true);
   const [diasSeleccionados, setDiasSeleccionados] = useState<number[]>([3]); // Miércoles por defecto
   const [horaProgramada, setHoraProgramada] = useState('08:00');
   const [ampm, setAmpm] = useState<'AM' | 'PM'>('AM');
@@ -98,7 +101,7 @@ export default function App() {
   useEffect(() => {
     fetchDatos();
 
-    // Suscripción en Tiempo Real con Supabase
+    // Suscripciones en Tiempo Real
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'movimientos' }, () => fetchMovimientos())
@@ -111,7 +114,7 @@ export default function App() {
     };
   }, []);
 
-  // Procesar las entradas/gastos recurrentes automáticamente en UTC-7
+  // Procesar las entradas de dinero constantes automáticamente en UTC-7
   useEffect(() => {
     if (recurrentes.length > 0) {
       procesarRecurrentesAutomaticos();
@@ -125,18 +128,46 @@ export default function App() {
   };
 
   const fetchMovimientos = async () => {
-    const { data } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
     if (data) setMovimientos(data);
+    if (error) console.error("Error cargando movimientos:", error);
   };
 
   const fetchRecurrentes = async () => {
-    const { data } = await supabase.from('recurrentes').select('*');
-    if (data) setRecurrentes(data);
+    const { data, error } = await supabase.from('recurrentes').select('*');
+    if (data) {
+      // Parsear información extendida desde 'frecuencia' o campos de respaldo
+      const procesados = data.map(item => {
+        let esConstanteVal = true;
+        let diasVal = [3];
+        let horaVal = '08:00';
+
+        if (item.frecuencia && item.frecuencia.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(item.frecuencia);
+            esConstanteVal = parsed.esConstante ?? true;
+            diasVal = parsed.diasSemana || [3];
+            horaVal = parsed.hora24 || '08:00';
+          } catch (e) {
+            console.error("Error parseando frecuencia JSON", e);
+          }
+        }
+        return {
+          ...item,
+          esConstante: esConstanteVal,
+          diasSemana: diasVal,
+          hora24: horaVal
+        };
+      });
+      setRecurrentes(procesados);
+    }
+    if (error) console.error("Error cargando recurrentes:", error);
   };
 
   const fetchApartados = async () => {
-    const { data } = await supabase.from('apartados').select('*');
+    const { data, error } = await supabase.from('apartados').select('*');
     if (data) setApartados(data);
+    if (error) console.error("Error cargando apartados:", error);
   };
 
   const guardarDispositivo = (nombre: string) => {
@@ -144,7 +175,6 @@ export default function App() {
     localStorage.setItem('finanzas_dispositivo', nombre);
   };
 
-  // Convertir hora 12h AM/PM a 24h para almacenamiento interno
   const obtenerHora24 = (hora12: string, formatoAMPM: 'AM' | 'PM') => {
     let [h, m] = hora12.split(':').map(Number);
     if (formatoAMPM === 'PM' && h < 12) h += 12;
@@ -152,32 +182,27 @@ export default function App() {
     return `${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
   };
 
-  // Lógica de Sincronización Automática en UTC-7
   const procesarRecurrentesAutomaticos = async () => {
-    // Obtener la fecha/hora actual ajustada a UTC-7
     const ahoraUtc = new Date();
     const ahoraUtc7 = new Date(ahoraUtc.getTime() - 7 * 60 * 60 * 1000);
 
-    const diaSemanaActual = ahoraUtc7.getUTCDay(); // 0: Dom, 1: Lun...
+    const diaSemanaActual = ahoraUtc7.getUTCDay();
     const horaActualStr = `${String(ahoraUtc7.getUTCHours()).padStart(2, '0')}:${String(ahoraUtc7.getUTCMinutes()).padStart(2, '0')}`;
     const fechaHoyStr = ahoraUtc7.toISOString().split('T')[0];
 
     for (const rec of recurrentes) {
-      if (rec.dias_semana && rec.dias_semana.includes(diaSemanaActual)) {
-        const horaEjecucion = rec.hora_programada || '08:00';
+      if (rec.esConstante && rec.diasSemana && rec.diasSemana.includes(diaSemanaActual)) {
+        const horaEjecucion = rec.hora24 || '08:00';
         
-        // Verificar si la hora actual ya alcanzó la hora programada hoy y no se ha procesado hoy
         if (horaActualStr >= horaEjecucion && rec.ultimo_procesado !== fechaHoyStr) {
-          // 1. Insertar movimiento automático
           await supabase.from('movimientos').insert([{
             monto: rec.monto,
-            tipo: rec.tipo,
+            tipo: rec.tipo || 'ingreso',
             categoria: rec.categoria,
-            descripcion: `[Programado Automatico] ${rec.titulo}`,
-            dispositivo: 'Sistema Auto (UTC-7)'
+            descripcion: `[Entrada Automática] ${rec.titulo}`,
+            dispositivo: 'Auto UTC-7'
           }]);
 
-          // 2. Actualizar último procesado
           await supabase.from('recurrentes').update({ ultimo_procesado: fechaHoyStr }).eq('id', rec.id);
         }
       }
@@ -188,7 +213,7 @@ export default function App() {
     e.preventDefault();
     if (!monto || parseFloat(monto) <= 0) return;
 
-    await supabase.from('movimientos').insert([{
+    const { error } = await supabase.from('movimientos').insert([{
       monto: parseFloat(monto),
       tipo,
       categoria,
@@ -196,8 +221,18 @@ export default function App() {
       dispositivo
     }]);
 
-    setMonto('');
-    setDescripcion('');
+    if (!error) {
+      setMonto('');
+      setDescripcion('');
+      fetchMovimientos();
+    } else {
+      alert("Error al guardar el registro: " + error.message);
+    }
+  };
+
+  const borrarMovimiento = async (id: string) => {
+    const { error } = await supabase.from('movimientos').delete().eq('id', id);
+    if (!error) fetchMovimientos();
   };
 
   const alternarDiaSeleccionado = (diaId: number) => {
@@ -208,48 +243,106 @@ export default function App() {
     }
   };
 
-  const agregarRecurrente = async (e: React.FormEvent) => {
+  const guardarOActualizarRecurrente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tituloRecurrente || !montoRecurrente || diasSeleccionados.length === 0) return;
+    if (!tituloRecurrente || !montoRecurrente) return;
 
     const hora24 = obtenerHora24(horaProgramada, ampm);
+    const metadataFrecuencia = JSON.stringify({
+      esConstante,
+      diasSemana: diasSeleccionados,
+      hora24
+    });
 
-    await supabase.from('recurrentes').insert([{
+    const payload = {
       titulo: tituloRecurrente,
       monto: parseFloat(montoRecurrente),
-      tipo: tipoRecurrente,
-      frecuencia: 'dias_semana',
-      dias_semana: diasSeleccionados,
-      hora_programada: hora24,
+      tipo: 'ingreso',
+      frecuencia: metadataFrecuencia,
       categoria: catRecurrente
-    }]);
+    };
 
+    let resError = null;
+
+    if (idEditando) {
+      const { error } = await supabase.from('recurrentes').update(payload).eq('id', idEditando);
+      resError = error;
+    } else {
+      const { error } = await supabase.from('recurrentes').insert([payload]);
+      resError = error;
+    }
+
+    if (!resError) {
+      cancelarEdicionRecurrente();
+      fetchRecurrentes();
+    } else {
+      alert("Error al guardar la entrada de dinero: " + resError.message);
+    }
+  };
+
+  const cargarParaEditarRecurrente = (rec: Recurrente) => {
+    setIdEditando(rec.id || null);
+    setTituloRecurrente(rec.titulo);
+    setMontoRecurrente(rec.monto.toString());
+    setEsConstante(rec.esConstante ?? true);
+    setDiasSeleccionados(rec.diasSemana || [3]);
+    setCatRecurrente(rec.categoria);
+  };
+
+  const cancelarEdicionRecurrente = () => {
+    setIdEditando(null);
     setTituloRecurrente('');
     setMontoRecurrente('');
+    setEsConstante(true);
     setDiasSeleccionados([3]);
   };
 
   const borrarRecurrente = async (id: string) => {
-    await supabase.from('recurrentes').delete().eq('id', id);
+    const { error } = await supabase.from('recurrentes').delete().eq('id', id);
+    if (!error) fetchRecurrentes();
+  };
+
+  const ejecutarEntradaManual = async (rec: Recurrente) => {
+    const { error } = await supabase.from('movimientos').insert([{
+      monto: rec.monto,
+      tipo: 'ingreso',
+      categoria: rec.categoria,
+      descripcion: `[Entrada Registrada] ${rec.titulo}`,
+      dispositivo
+    }]);
+
+    if (!error) {
+      alert(`¡Entrada de $${rec.monto} añadida al saldo con éxito!`);
+      fetchMovimientos();
+    }
   };
 
   const agregarApartado = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombreApartado || !metaApartado) return;
 
-    await supabase.from('apartados').insert([{
+    const { error } = await supabase.from('apartados').insert([{
       nombre: nombreApartado,
       meta: parseFloat(metaApartado),
       actual: 0
     }]);
 
-    setNombreApartado('');
-    setMetaApartado('');
+    if (!error) {
+      setNombreApartado('');
+      setMetaApartado('');
+      fetchApartados();
+    }
   };
 
   const abonarApartado = async (id: string, actual: number, abono: number) => {
     if (abono <= 0) return;
     await supabase.from('apartados').update({ actual: actual + abono }).eq('id', id);
+    fetchApartados();
+  };
+
+  const borrarApartado = async (id: string) => {
+    await supabase.from('apartados').delete().eq('id', id);
+    fetchApartados();
   };
 
   const calcularBalanceTotal = () => {
@@ -264,7 +357,7 @@ export default function App() {
       {/* CABECERA Y SELECCIÓN DE DISPOSITIVO */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', background: '#1e1e1e', padding: '12px', borderRadius: '12px' }}>
         <div>
-          <span style={{ fontSize: '12px', color: '#aaa' }}>Balance disponible (UTC-7)</span>
+          <span style={{ fontSize: '12px', color: '#aaa' }}>Balance disponible</span>
           <h2 style={{ margin: 0, fontSize: '28px', color: calcularBalanceTotal() >= 0 ? '#4caf50' : '#f44336' }}>
             ${calcularBalanceTotal().toLocaleString('es-MX', { minimumFractionDigits: 2 })}
           </h2>
@@ -278,8 +371,8 @@ export default function App() {
             onChange={(e) => guardarDispositivo(e.target.value)}
             style={{ background: '#2d2d2d', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}
           >
-            <option value="Él">Él (Móvil 1)</option>
-            <option value="Ella">Ella (Móvil 2)</option>
+            <option value="Él">Él</option>
+            <option value="Ella">Ella</option>
           </select>
         </div>
       </div>
@@ -359,7 +452,7 @@ export default function App() {
                 type="text" 
                 value={descripcion} 
                 onChange={(e) => setDescripcion(e.target.value)} 
-                placeholder="Ej. Tacos, pago de recibo..."
+                placeholder="Ej. Tacos, recibo..."
                 style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
               />
             </div>
@@ -369,10 +462,10 @@ export default function App() {
             </button>
           </form>
 
-          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Movimientos Recientes</h3>
+          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Historial de Movimientos</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {movimientos.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>Aún no hay movimientos registrados</p>
+              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No hay movimientos guardados aún.</p>
             ) : (
               movimientos.map(mov => (
                 <div key={mov.id} style={{ background: '#1e1e1e', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -381,8 +474,15 @@ export default function App() {
                     <div style={{ fontSize: '12px', color: '#aaa' }}>{mov.descripcion || 'Sin descripción'}</div>
                     <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{mov.dispositivo} • {new Date(mov.created_at || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                   </div>
-                  <div style={{ fontWeight: 'bold', fontSize: '16px', color: mov.tipo === 'ingreso' ? '#10b981' : '#ef4444' }}>
-                    {mov.tipo === 'ingreso' ? '+' : '-'}${mov.monto.toFixed(2)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '16px', color: mov.tipo === 'ingreso' ? '#10b981' : '#ef4444' }}>
+                      {mov.tipo === 'ingreso' ? '+' : '-'}${mov.monto.toFixed(2)}
+                    </div>
+                    {mov.id && (
+                      <button onClick={() => borrarMovimiento(mov.id!)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))
@@ -391,22 +491,22 @@ export default function App() {
         </>
       )}
 
-      {/* PESTAÑA ENTRADAS DE DINERO PROGRAMADAS */}
+      {/* PESTAÑA ENTRADAS DE DINERO PROGRAMADAS / MANUALES */}
       {pestana === 'admin' && (
         <>
           <div style={{ background: '#1e1e1e', padding: '16px', borderRadius: '12px', marginBottom: '20px' }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Calendar size={18} /> Programar Entrada de Dinero
+              <Clock size={18} /> {idEditando ? 'Editar Entrada de Dinero' : 'Registrar Entrada de Dinero'}
             </h3>
 
-            <form onSubmit={agregarRecurrente}>
+            <form onSubmit={guardarOActualizarRecurrente}>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa' }}>Nombre del Ingreso (Ej. Trabajo Fábrica)</label>
+                <label style={{ fontSize: '12px', color: '#aaa' }}>Nombre del Ingreso</label>
                 <input 
                   type="text" 
                   value={tituloRecurrente} 
                   onChange={(e) => setTituloRecurrente(e.target.value)} 
-                  placeholder="Ej. Nómina / Sueldo semanal"
+                  placeholder="Ej. Trabajo Fábrica, Trabajo Extra..."
                   style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
                   required
                 />
@@ -425,57 +525,80 @@ export default function App() {
                 />
               </div>
 
-              {/* SELECCIÓN DE DÍAS DE LA SEMANA */}
+              {/* TIPO DE ENTRADA: CONSTANTE O MANUAL */}
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Días de la semana que pasará:</label>
-                <div style={{ display: 'flex', gap: '6px', justifyContent: 'space-between' }}>
-                  {DIAS_SEMANA.map(dia => {
-                    const seleccionado = diasSeleccionados.includes(dia.id);
-                    return (
-                      <button
-                        type="button"
-                        key={dia.id}
-                        onClick={() => alternarDiaSeleccionado(dia.id)}
-                        style={{
-                          flex: 1,
-                          padding: '8px 0',
-                          borderRadius: '6px',
-                          border: 'none',
-                          background: seleccionado ? '#3b82f6' : '#2d2d2d',
-                          color: '#fff',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {dia.nombre}
-                      </button>
-                    );
-                  })}
+                <label style={{ fontSize: '12px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Frecuencia de la Entrada</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setEsConstante(true)}
+                    style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: esConstante ? '#10b981' : '#2d2d2d', color: '#fff', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    🔄 Constante (Semanal)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEsConstante(false)}
+                    style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: !esConstante ? '#3b82f6' : '#2d2d2d', color: '#fff', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    🖐️ No Constante (Manual)
+                  </button>
                 </div>
               </div>
 
-              {/* SELECCIÓN DE HORA Y FORMATO AM/PM */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa' }}>Hora de ejecución (Horario UTC-7)</label>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                  <input 
-                    type="time" 
-                    value={horaProgramada} 
-                    onChange={(e) => setHoraProgramada(e.target.value)}
-                    style={{ flex: 2, padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-                    required
-                  />
-                  <select 
-                    value={ampm} 
-                    onChange={(e) => setAmpm(e.target.value as 'AM' | 'PM')}
-                    style={{ flex: 1, padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box', fontWeight: 'bold' }}
-                  >
-                    <option value="AM">AM</option>
-                    <option value="PM">PM</option>
-                  </select>
-                </div>
-              </div>
+              {/* CONFIGURACIÓN DÍAS Y HORA SI ES CONSTANTE */}
+              {esConstante && (
+                <>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ fontSize: '12px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Días de la semana que se registrará:</label>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'space-between' }}>
+                      {DIAS_SEMANA.map(dia => {
+                        const seleccionado = diasSeleccionados.includes(dia.id);
+                        return (
+                          <button
+                            type="button"
+                            key={dia.id}
+                            onClick={() => alternarDiaSeleccionado(dia.id)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 0',
+                              borderRadius: '6px',
+                              border: 'none',
+                              background: seleccionado ? '#3b82f6' : '#2d2d2d',
+                              color: '#fff',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {dia.nombre}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ fontSize: '12px', color: '#aaa' }}>Hora de ejecución automática (UTC-7)</label>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <input 
+                        type="time" 
+                        value={horaProgramada} 
+                        onChange={(e) => setHoraProgramada(e.target.value)}
+                        style={{ flex: 2, padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
+                      />
+                      <select 
+                        value={ampm} 
+                        onChange={(e) => setAmpm(e.target.value as 'AM' | 'PM')}
+                        style={{ flex: 1, padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box', fontWeight: 'bold' }}
+                      >
+                        <option value="AM">AM</option>
+                        <option value="PM">PM</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div style={{ marginBottom: '12px' }}>
                 <label style={{ fontSize: '12px', color: '#aaa' }}>Categoría</label>
@@ -490,34 +613,67 @@ export default function App() {
                 </select>
               </div>
 
-              <button type="submit" style={{ width: '100%', padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>
-                Guardar Entrada Programada
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="submit" style={{ flex: 1, padding: '12px', background: idEditando ? '#f59e0b' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>
+                  {idEditando ? 'Guardar Cambios' : 'Guardar Entrada'}
+                </button>
+                {idEditando && (
+                  <button type="button" onClick={cancelarEdicionRecurrente} style={{ padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px' }}>
+                    Cancelar
+                  </button>
+                )}
+              </div>
             </form>
           </div>
 
-          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Entradas Activas Programadas</h3>
+          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Lista de Entradas Registradas</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {recurrentes.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No hay entradas automáticas programadas</p>
+              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No hay entradas de dinero guardadas aún.</p>
             ) : (
               recurrentes.map(rec => (
                 <div key={rec.id} style={{ background: '#1e1e1e', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{rec.titulo}</div>
-                    <div style={{ fontSize: '12px', color: '#3b82f6' }}>
-                      Días: {rec.dias_semana?.map(d => DIAS_SEMANA.find(item => item.id === d)?.nombre).join(', ')}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#aaa' }}>Hora: {rec.hora_programada} (UTC-7)</div>
+                    {rec.esConstante ? (
+                      <>
+                        <div style={{ fontSize: '12px', color: '#10b981' }}>
+                          🔄 Constante: {rec.diasSemana?.map(d => DIAS_SEMANA.find(item => item.id === d)?.nombre).join(', ')}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#aaa' }}>Hora: {rec.hora24} (UTC-7)</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '12px', color: '#3b82f6' }}>
+                        🖐️ No Constante (Se aplica de forma manual)
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#10b981' }}>+${rec.monto.toFixed(2)}</div>
-                    <button 
-                      onClick={() => rec.id && borrarRecurrente(rec.id)}
-                      style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '12px', cursor: 'pointer', marginTop: '4px' }}
-                    >
-                      Eliminar
-                    </button>
+                    
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px', justifyContent: 'flex-end' }}>
+                      {!rec.esConstante && (
+                        <button 
+                          onClick={() => ejecutarEntradaManual(rec)}
+                          title="Registrar esta entrada ahora"
+                          style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+                        >
+                          <CheckCircle2 size={12} /> Sumar
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => cargarParaEditarRecurrente(rec)}
+                        style={{ background: '#2d2d2d', color: '#f59e0b', border: '1px solid #444', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button 
+                        onClick={() => rec.id && borrarRecurrente(rec.id)}
+                        style={{ background: '#2d2d2d', color: '#ef4444', border: '1px solid #444', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -566,7 +722,7 @@ export default function App() {
           <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Mis Apartados</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {apartados.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No tienes apartados creados</p>
+              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No tienes apartados creados.</p>
             ) : (
               apartados.map(ap => {
                 const porcentaje = Math.min(100, Math.round((ap.actual / ap.meta) * 100));
@@ -574,10 +730,16 @@ export default function App() {
                   <div key={ap.id} style={{ background: '#1e1e1e', padding: '14px', borderRadius: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ fontWeight: 'bold' }}>{ap.nombre}</span>
-                      <span style={{ fontSize: '14px', color: '#aaa' }}>${ap.actual.toFixed(2)} / ${ap.meta.toFixed(2)}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '14px', color: '#aaa' }}>${ap.actual.toFixed(2)} / ${ap.meta.toFixed(2)}</span>
+                        {ap.id && (
+                          <button onClick={() => borrarApartado(ap.id!)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    {/* BARRA DE PROGRESO */}
                     <div style={{ width: '100%', background: '#2d2d2d', height: '8px', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
                       <div style={{ width: `${porcentaje}%`, background: '#3b82f6', height: '100%' }}></div>
                     </div>
