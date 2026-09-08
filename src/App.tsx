@@ -12,11 +12,11 @@ import {
   TrendingDown, 
   TrendingUp,
   Clock,
-  CheckCircle2
+  X
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://hglxhzxtwkxzefbfelkj.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6IzEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -39,7 +39,7 @@ export default function App() {
   const [apartados, setApartados] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Formularios
+  // Formularios Movimientos
   const [nuevoMovimiento, setNuevoMovimiento] = useState({
     monto: '',
     tipo: 'gasto',
@@ -47,6 +47,7 @@ export default function App() {
     descripcion: ''
   });
 
+  // Formularios Recurrentes
   const [editandoRecurrenteId, setEditandoRecurrenteId] = useState(null);
   const [nuevoRecurrente, setNuevoRecurrente] = useState({
     titulo: '',
@@ -54,74 +55,82 @@ export default function App() {
     tipo: 'ingreso',
     frecuencia: 'semanal',
     categoria: 'Sueldo',
-    dia_semana: 5, // Por defecto Viernes
-    hora: '17:00'
+    dia_semana: 1, 
+    hora: '23:15'
   });
 
+  // Formularios Apartados / Bóvedas
+  const [editandoApartadoId, setEditandoApartadoId] = useState(null);
   const [nuevoApartado, setNuevoApartado] = useState({
     nombre: '',
     meta: ''
   });
-
   const [montosApartados, setMontosApartados] = useState({});
 
   useEffect(() => {
     cargarDatos();
   }, []);
 
-  // Verificar pagos automáticos cada minuto
+  // Verificar pagos automáticos continuamente
   useEffect(() => {
+    if (recurrentes.length > 0) {
+      procesarPagosAutomaticos();
+    }
     const timer = setInterval(() => {
       procesarPagosAutomaticos();
-    }, 60000);
+    }, 10000); // Revisa cada 10 segundos
     return () => clearInterval(timer);
-  }, [recurrentes, movimientos]);
+  }, [recurrentes]);
 
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      const { data: movs, error: errMovs } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
+      const { data: movs } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
       const { data: recs } = await supabase.from('recurrentes').select('*');
       const { data: aparts } = await supabase.from('apartados').select('*');
 
-      if (errMovs) console.error('Error Supabase Movimientos:', errMovs);
       if (movs) setMovimientos(movs);
       if (recs) setRecurrentes(recs);
       if (aparts) setApartados(aparts);
     } catch (err) {
-      console.error('Error de red al conectar con Supabase:', err);
+      console.error('Error al cargar Supabase:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Motor de Automatización Programada (Día y Hora)
+  // Lógica mejorada de automatización: evalúa si ya pasó la hora programada en el día
   const procesarPagosAutomaticos = async () => {
     const ahora = new Date();
-    const diaActual = ahora.getDay() === 0 ? 7 : ahora.getDay(); // 1-7
-    const horaActual = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
+    const diaActual = ahora.getDay() === 0 ? 7 : ahora.getDay(); // 1 (Lunes) - 7 (Domingo)
+    const minutosActuales = ahora.getHours() * 60 + ahora.getMinutes();
 
     for (const rec of recurrentes) {
       const mismoDia = Number(rec.dia_semana) === diaActual;
-      const mismaHora = rec.hora === horaActual;
+      
+      // Convertir hora "HH:MM" a minutos totales
+      const [h, m] = (rec.hora || '12:00').split(':').map(Number);
+      const minutosProgramados = h * 60 + m;
 
-      // Comprobar si no se procesó en la última hora para no duplicar
+      // Si hoy es el día y la hora programada ya pasó o es la actual
+      const horaYaPasoOCoincide = minutosActuales >= minutosProgramados;
+
+      // Verificar si ya fue procesado el día de hoy
       const ultimoProc = rec.ultimo_proceso ? new Date(rec.ultimo_proceso) : null;
       const yaProcesadoHoy = ultimoProc && 
         ultimoProc.getDate() === ahora.getDate() && 
         ultimoProc.getMonth() === ahora.getMonth() &&
-        ultimoProc.getFullYear() === ahora.getFullYear() &&
-        ultimoProc.getHours() === ahora.getHours();
+        ultimoProc.getFullYear() === ahora.getFullYear();
 
-      if (mismoDia && mismaHora && !yaProcesadoHoy) {
+      if (mismoDia && horaYaPasoOCoincide && !yaProcesadoHoy) {
         try {
-          // 1. Crear el movimiento automático
+          // 1. Insertar automáticamente en Movimientos
           const { data: nuevoMov, error: errMov } = await supabase.from('movimientos').insert([
             {
               monto: parseFloat(rec.monto),
-              tipo: rec.tipo,
-              categoria: rec.categoria || 'Programado',
-              descripcion: `[Automático] ${rec.titulo}`,
+              tipo: rec.tipo || 'ingreso',
+              categoria: rec.categoria || 'Sueldo',
+              descripcion: `[Programado] ${rec.titulo}`,
               dispositivo: 'Auto'
             }
           ]).select();
@@ -129,13 +138,13 @@ export default function App() {
           if (!errMov && nuevoMov) {
             setMovimientos(prev => [nuevoMov[0], ...prev]);
 
-            // 2. Marcar fecha de último proceso
+            // 2. Marcar como procesado hoy
             const fechaIso = ahora.toISOString();
             await supabase.from('recurrentes').update({ ultimo_proceso: fechaIso }).eq('id', rec.id);
             setRecurrentes(prev => prev.map(r => r.id === rec.id ? { ...r, ultimo_proceso: fechaIso } : r));
           }
         } catch (e) {
-          console.error('Error al ejecutar pago automático:', e);
+          console.error('Error ejecutando ingreso/gasto programado:', e);
         }
       }
     }
@@ -161,22 +170,18 @@ export default function App() {
         tipo: nuevoMovimiento.tipo,
         categoria: nuevoMovimiento.categoria,
         descripcion: nuevoMovimiento.descripcion,
-        dispositivo: dispositivo
+        dispositivo
       };
 
       const { data, error } = await supabase.from('movimientos').insert([payload]).select();
 
-      if (error) {
-        alert(`Error Supabase (${error.code}): ${error.message}`);
-        return;
-      }
-
+      if (error) throw error;
       if (data && data.length > 0) {
         setMovimientos([data[0], ...movimientos]);
         setNuevoMovimiento({ monto: '', tipo: 'gasto', categoria: 'Comida', descripcion: '' });
       }
     } catch (err) {
-      alert('Error de red/conexión: ' + err.message);
+      alert('Error al guardar movimiento: ' + err.message);
     }
   };
 
@@ -197,14 +202,12 @@ export default function App() {
 
     try {
       if (editandoRecurrenteId) {
-        // Modo Edición
         const { error } = await supabase.from('recurrentes').update(payload).eq('id', editandoRecurrenteId);
         if (error) throw error;
 
         setRecurrentes(recurrentes.map(r => r.id === editandoRecurrenteId ? { ...r, ...payload } : r));
         setEditandoRecurrenteId(null);
       } else {
-        // Modo Creación
         const { data, error } = await supabase.from('recurrentes').insert([payload]).select();
         if (error) throw error;
         setRecurrentes([...recurrentes, data[0]]);
@@ -216,11 +219,15 @@ export default function App() {
         tipo: 'ingreso',
         frecuencia: 'semanal',
         categoria: 'Sueldo',
-        dia_semana: 5,
-        hora: '17:00'
+        dia_semana: 1,
+        hora: '12:00'
       });
+      
+      // Forzar verificación inmediata al guardar
+      setTimeout(() => procesarPagosAutomaticos(), 500);
+
     } catch (err) {
-      alert('Error al guardar programación: ' + err.message);
+      alert('Error guardando pago programado: ' + err.message);
     }
   };
 
@@ -232,21 +239,8 @@ export default function App() {
       tipo: r.tipo || 'ingreso',
       frecuencia: r.frecuencia || 'semanal',
       categoria: r.categoria || 'Sueldo',
-      dia_semana: r.dia_semana || 5,
-      hora: r.hora || '17:00'
-    });
-  };
-
-  const cancelarEdicionRecurrente = () => {
-    setEditandoRecurrenteId(null);
-    setNuevoRecurrente({
-      titulo: '',
-      monto: '',
-      tipo: 'ingreso',
-      frecuencia: 'semanal',
-      categoria: 'Sueldo',
-      dia_semana: 5,
-      hora: '17:00'
+      dia_semana: r.dia_semana || 1,
+      hora: r.hora || '12:00'
     });
   };
 
@@ -255,26 +249,66 @@ export default function App() {
     try {
       await supabase.from('recurrentes').delete().eq('id', id);
       setRecurrentes(recurrentes.filter(r => r.id !== id));
-      if (editandoRecurrenteId === id) cancelarEdicionRecurrente();
+      if (editandoRecurrenteId === id) setEditandoRecurrenteId(null);
     } catch (err) {
-      alert('Error al eliminar programado: ' + err.message);
+      alert('Error al eliminar: ' + err.message);
     }
   };
 
+  // Crear o Editar Apartados / Bóvedas
   const handleGuardarApartado = async (e) => {
     e.preventDefault();
     if (!nuevoApartado.nombre || !nuevoApartado.meta) return;
 
     try {
-      const { data, error } = await supabase.from('apartados').insert([
-        { nombre: nuevoApartado.nombre, meta: parseFloat(nuevoApartado.meta), actual: 0 }
-      ]).select();
+      if (editandoApartadoId) {
+        // Editar Meta / Nombre
+        const payload = {
+          nombre: nuevoApartado.nombre,
+          meta: parseFloat(nuevoApartado.meta)
+        };
+        const { error } = await supabase.from('apartados').update(payload).eq('id', editandoApartadoId);
+        if (error) throw error;
 
-      if (error) throw error;
-      setApartados([...apartados, data[0]]);
+        setApartados(apartados.map(a => a.id === editandoApartadoId ? { ...a, ...payload } : a));
+        setEditandoApartadoId(null);
+      } else {
+        // Crear
+        const { data, error } = await supabase.from('apartados').insert([
+          { nombre: nuevoApartado.nombre, meta: parseFloat(nuevoApartado.meta), actual: 0 }
+        ]).select();
+
+        if (error) throw error;
+        setApartados([...apartados, data[0]]);
+      }
+
       setNuevoApartado({ nombre: '', meta: '' });
     } catch (err) {
-      alert('Error al crear apartado: ' + err.message);
+      alert('Error al guardar apartado: ' + err.message);
+    }
+  };
+
+  const seleccionarParaEditarApartado = (item) => {
+    setEditandoApartadoId(item.id);
+    setNuevoApartado({
+      nombre: item.nombre,
+      meta: item.meta
+    });
+  };
+
+  const cancelarEdicionApartado = () => {
+    setEditandoApartadoId(null);
+    setNuevoApartado({ nombre: '', meta: '' });
+  };
+
+  const eliminarApartado = async (id) => {
+    if (!confirm('¿Eliminar esta bóveda? Los fondos asignados deberán reajustarse manualmente.')) return;
+    try {
+      await supabase.from('apartados').delete().eq('id', id);
+      setApartados(apartados.filter(a => a.id !== id));
+      if (editandoApartadoId === id) cancelarEdicionApartado();
+    } catch (err) {
+      alert('Error al eliminar bóveda: ' + err.message);
     }
   };
 
@@ -302,7 +336,7 @@ export default function App() {
             monto: montoPersonalizado,
             tipo: 'gasto',
             categoria: 'Apartado',
-            descripcion: `Abono a apartado: ${apartado.nombre}`,
+            descripcion: `Abono a bóveda: ${apartado.nombre}`,
             dispositivo
           }
         ]).select();
@@ -314,7 +348,7 @@ export default function App() {
       setMontosApartados({ ...montosApartados, [apartado.id]: '' });
 
     } catch (err) {
-      alert('Error al ingresar al apartado: ' + err.message);
+      alert('Error al abonar a la bóveda: ' + err.message);
     }
   };
 
@@ -475,7 +509,7 @@ export default function App() {
                 {movimientos.length === 0 && !loading && (
                   <p className="text-center text-xs text-slate-500 py-4">No hay registros guardados aún.</p>
                 )}
-                {movimientos.slice(0, 5).map((m) => (
+                {movimientos.slice(0, 8).map((m) => (
                   <div key={m.id} className="bg-[#1E293B] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs ${m.tipo === 'ingreso' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
@@ -501,14 +535,28 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA APARTADOS */}
+        {/* VISTA APARTADOS / BÓVEDAS CON EDICIÓN Y ELIMINACIÓN */}
         {activeTab === 'apartados' && (
           <div className="space-y-6">
             <form onSubmit={handleGuardarApartado} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Crear Nueva Bóveda / Meta</h2>
+              <div className="flex justify-between items-center">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {editandoApartadoId ? 'Editar Bóveda / Meta' : 'Crear Nueva Bóveda / Meta'}
+                </h2>
+                {editandoApartadoId && (
+                  <button 
+                    type="button" 
+                    onClick={cancelarEdicionApartado}
+                    className="text-[11px] text-rose-400 font-bold hover:underline flex items-center gap-1"
+                  >
+                    <X size={12} /> Cancelar
+                  </button>
+                )}
+              </div>
+
               <input
                 type="text"
-                placeholder="Nombre de la meta"
+                placeholder="Nombre de la meta (ej. Auto, Vacaciones)"
                 value={nuevoApartado.nombre}
                 onChange={(e) => setNuevoApartado({ ...nuevoApartado, nombre: e.target.value })}
                 className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
@@ -516,18 +564,21 @@ export default function App() {
               />
               <input
                 type="number"
-                placeholder="Meta $"
+                placeholder="Monto de Meta $"
                 value={nuevoApartado.meta}
                 onChange={(e) => setNuevoApartado({ ...nuevoApartado, meta: e.target.value })}
                 className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 required
               />
-              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs border border-slate-700">
-                + Crear Bóveda
+              <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition">
+                {editandoApartadoId ? 'Guardar Cambios' : '+ Crear Bóveda'}
               </button>
             </form>
 
             <div className="space-y-4">
+              {apartados.length === 0 && (
+                <p className="text-center text-xs text-slate-500 py-4">No hay bóvedas de ahorro creadas.</p>
+              )}
               {apartados.map((item) => {
                 const porcentaje = Math.min(Math.round(((item.actual || 0) / item.meta) * 100), 100);
 
@@ -538,9 +589,26 @@ export default function App() {
                         <h3 className="font-bold text-white text-base">{item.nombre}</h3>
                         <p className="text-[11px] text-slate-400">Meta: ${Number(item.meta).toLocaleString()}</p>
                       </div>
-                      <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                        ${(item.actual || 0).toLocaleString()}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                          ${(item.actual || 0).toLocaleString()}
+                        </span>
+                        
+                        <button 
+                          onClick={() => seleccionarParaEditarApartado(item)}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-emerald-400 transition"
+                          title="Editar Bóveda"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                        <button 
+                          onClick={() => eliminarApartado(item.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-400 transition"
+                          title="Eliminar Bóveda"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="space-y-1">
@@ -575,7 +643,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA PROGRAMAR PAGOS / INGRESSOS CON DÍA Y HORA */}
+        {/* VISTA PROGRAMAR PAGOS / INGRESOS */}
         {activeTab === 'recurrentes' && (
           <div className="space-y-6">
             <form onSubmit={handleGuardarRecurrente} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
@@ -586,7 +654,7 @@ export default function App() {
                 {editandoRecurrenteId && (
                   <button 
                     type="button" 
-                    onClick={cancelarEdicionRecurrente} 
+                    onClick={() => setEditandoRecurrenteId(null)} 
                     className="text-[11px] text-rose-400 font-bold hover:underline"
                   >
                     Cancelar
@@ -678,7 +746,6 @@ export default function App() {
               </button>
             </form>
 
-            {/* LISTA DE PROGRAMADOS CON EDICIÓN Y ELIMINACIÓN */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Ingresos / Gastos Programados</h3>
               <div className="space-y-2.5">
@@ -730,7 +797,7 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR ESTILO BANCA MÓVIL */}
+      {/* BARRA DE NAVEGACIÓN INFERIOR */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#1E293B]/90 backdrop-blur-md border-t border-slate-800 py-3 px-6 z-30">
         <div className="max-w-md mx-auto flex justify-around items-center">
           <button
