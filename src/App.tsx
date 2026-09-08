@@ -1,770 +1,500 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
-  Wallet, ArrowUpCircle, ArrowDownCircle, 
-  Smartphone, FolderPlus, Clock, Layers, Edit2, Trash2, CheckCircle2
+  PlusCircle, 
+  MinusCircle, 
+  Wallet, 
+  PieChart, 
+  Calendar, 
+  Target, 
+  Trash2, 
+  RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight
 } from 'lucide-react';
 
-// --------------------------------------------------
-// CONFIGURACIÓN DE SUPABASE
-// --------------------------------------------------
-const SUPABASE_URL = 'https://hglxhzxtwkxzefbfelkj.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
+// Reemplaza con tus llaves si es necesario
+const SUPABASE_URL = 'https://dsrrpc1u.supabase.co'; // Tu URL de Supabase
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'; // Tu Anon Key de Supabase
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// Categorías Predefinidas
-const CATEGORIAS_GASTO = [
-  '🍔 Comida / Boneless', '🛒 Mandado / Super', '🏧 Retiro Cajero',
-  '⛽ Gasolina / Transporte', '💡 Luz / Servicios', '🏠 Renta',
-  '📶 Internet / Plan', '💳 Crédito / Préstamo', '💊 Farmacia / Salud',
-  '🎭 Entretenimiento', '🛍️ Compras Varias'
-];
-
-const CATEGORIAS_INGRESO = [
-  '💼 Sueldo / Nómina', '💵 Ventas / Trabajo Extra', '🎁 Regalo / Transferencia', '🔀 Otro Ingreso'
-];
-
-const DIAS_SEMANA = [
-  { id: 1, nombre: 'Lun' },
-  { id: 2, nombre: 'Mar' },
-  { id: 3, nombre: 'Mié' },
-  { id: 4, nombre: 'Jue' },
-  { id: 5, nombre: 'Vie' },
-  { id: 6, nombre: 'Sáb' },
-  { id: 0, nombre: 'Dom' }
-];
-
-interface Movimiento {
-  id?: string;
-  monto: number;
-  tipo: 'ingreso' | 'gasto';
-  categoria: string;
-  descripcion: string;
-  dispositivo: string;
-  created_at?: string;
-}
-
-interface Recurrente {
-  id?: string;
-  titulo: string;
-  monto: number;
-  tipo: 'ingreso' | 'gasto';
-  frecuencia: string;
-  categoria: string;
-  proxima_fecha?: string;
-  ultimo_procesado?: string;
-  // Campos locales dinámicos
-  esConstante?: boolean;
-  diasSemana?: number[];
-  hora24?: string;
-}
-
-interface Apartado {
-  id?: string;
-  nombre: string;
-  meta: number;
-  actual: number;
-}
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY || SUPABASE_ANON_KEY
+);
 
 export default function App() {
-  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
-  const [recurrentes, setRecurrentes] = useState<Recurrente[]>([]);
-  const [apartados, setApartados] = useState<Apartado[]>([]);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [dispositivo, setDispositivo] = useState('Él'); // 'Él' o 'Ella'
+  
+  // Estados de datos
+  const [movimientos, setMovimientos] = useState([]);
+  const [recurrentes, setRecurrentes] = useState([]);
+  const [apartados, setApartados] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Formulario de Movimiento Rápido (Gastos / Ingresos)
-  const [monto, setMonto] = useState('');
-  const [tipo, setTipo] = useState<'ingreso' | 'gasto'>('gasto');
-  const [categoria, setCategoria] = useState(CATEGORIAS_GASTO[0]);
-  const [descripcion, setDescripcion] = useState('');
-  const [dispositivo, setDispositivo] = useState<string>(
-    localStorage.getItem('finanzas_dispositivo') || 'Él'
-  );
+  // Formularios
+  const [nuevoMovimiento, setNuevoMovimiento] = useState({
+    monto: '',
+    tipo: 'gasto',
+    categoria: 'Comida',
+    descripcion: ''
+  });
 
-  // Formulario de Programados / Entradas de Dinero
-  const [idEditando, setIdEditando] = useState<string | null>(null);
-  const [tituloRecurrente, setTituloRecurrente] = useState('');
-  const [montoRecurrente, setMontoRecurrente] = useState('');
-  const [esConstante, setEsConstante] = useState<boolean>(true);
-  const [diasSeleccionados, setDiasSeleccionados] = useState<number[]>([3]); // Miércoles por defecto
-  const [horaProgramada, setHoraProgramada] = useState('08:00');
-  const [ampm, setAmpm] = useState<'AM' | 'PM'>('AM');
-  const [catRecurrente, setCatRecurrente] = useState(CATEGORIAS_INGRESO[0]);
+  const [nuevoRecurrente, setNuevoRecurrente] = useState({
+    titulo: '',
+    monto: '',
+    tipo: 'ingreso',
+    frecuencia: 'quincenal',
+    categoria: 'Sueldo'
+  });
 
-  // Formulario Apartados
-  const [nombreApartado, setNombreApartado] = useState('');
-  const [metaApartado, setMetaApartado] = useState('');
+  const [nuevoApartado, setNuevoApartado] = useState({
+    nombre: '',
+    meta: ''
+  });
 
-  // Control de Pestañas
-  const [pestana, setPestana] = useState<'inicio' | 'apartados' | 'admin'>('inicio');
+  // Estado para montos personalizados a ingresar en apartados
+  const [montosApartados, setMontosApartados] = useState({});
 
   useEffect(() => {
-    fetchDatos();
-
-    // Suscripciones en Tiempo Real
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'movimientos' }, () => fetchMovimientos())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recurrentes' }, () => fetchRecurrentes())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'apartados' }, () => fetchApartados())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    cargarDatos();
   }, []);
 
-  // Procesar las entradas de dinero constantes automáticamente en UTC-7
-  useEffect(() => {
-    if (recurrentes.length > 0) {
-      procesarRecurrentesAutomaticos();
+  const cargarDatos = async () => {
+    setLoading(true);
+    try {
+      const { data: movs } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
+      const { data: recs } = await supabase.from('recurrentes').select('*');
+      const { data: aparts } = await supabase.from('apartados').select('*');
+
+      if (movs) setMovimientos(movs);
+      if (recs) setRecurrentes(recs);
+      if (aparts) setApartados(aparts);
+    } catch (err) {
+      console.error('Error al cargar datos:', err);
+    } finally {
+      setLoading(false);
     }
-  }, [recurrentes]);
-
-  const fetchDatos = () => {
-    fetchMovimientos();
-    fetchRecurrentes();
-    fetchApartados();
   };
 
-  const fetchMovimientos = async () => {
-    const { data, error } = await supabase.from('movimientos').select('*').order('created_at', { ascending: false });
-    if (data) setMovimientos(data);
-    if (error) console.error("Error cargando movimientos:", error);
+  // --- CÁLCULOS ---
+  const totalIngresos = movimientos
+    .filter(m => m.tipo === 'ingreso')
+    .reduce((acc, m) => acc + Number(m.monto), 0);
+
+  const totalGastos = movimientos
+    .filter(m => m.tipo === 'gasto')
+    .reduce((acc, m) => acc + Number(m.monto), 0);
+
+  const balanceGeneral = totalIngresos - totalGastos;
+
+  // --- ACCIONES ---
+  const handleGuardarMovimiento = async (e) => {
+    e.preventDefault();
+    if (!nuevoMovimiento.monto) return;
+
+    try {
+      const { data, error } = await supabase.from('movimientos').insert([
+        { ...nuevoMovimiento, monto: parseFloat(nuevoMovimiento.monto), dispositivo }
+      ]).select();
+
+      if (error) throw error;
+      setMovimientos([data[0], ...movimientos]);
+      setNuevoMovimiento({ monto: '', tipo: 'gasto', categoria: 'Comida', descripcion: '' });
+    } catch (err) {
+      alert('Error al guardar el registro: ' + err.message);
+    }
   };
 
-  const fetchRecurrentes = async () => {
-    const { data, error } = await supabase.from('recurrentes').select('*');
-    if (data) {
-      const procesados = data.map(item => {
-        let esConstanteVal = true;
-        let diasVal = [3];
-        let horaVal = '08:00';
+  const handleGuardarRecurrente = async (e) => {
+    e.preventDefault();
+    if (!nuevoRecurrente.titulo || !nuevoRecurrente.monto) return;
 
-        if (item.frecuencia && item.frecuencia.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(item.frecuencia);
-            esConstanteVal = parsed.esConstante ?? true;
-            diasVal = parsed.diasSemana || [3];
-            horaVal = parsed.hora24 || '08:00';
-          } catch (e) {
-            console.error("Error parseando frecuencia JSON", e);
+    try {
+      const { data, error } = await supabase.from('recurrentes').insert([
+        { ...nuevoRecurrente, monto: parseFloat(nuevoRecurrente.monto) }
+      ]).select();
+
+      if (error) throw error;
+      setRecurrentes([...recurrentes, data[0]]);
+      setNuevoRecurrente({ titulo: '', monto: '', tipo: 'ingreso', frecuencia: 'quincenal', categoria: 'Sueldo' });
+    } catch (err) {
+      alert('Error al guardar recurrente: ' + err.message);
+    }
+  };
+
+  const handleGuardarApartado = async (e) => {
+    e.preventDefault();
+    if (!nuevoApartado.nombre || !nuevoApartado.meta) return;
+
+    try {
+      const { data, error } = await supabase.from('apartados').insert([
+        { nombre: nuevoApartado.nombre, meta: parseFloat(nuevoApartado.meta), actual: 0 }
+      ]).select();
+
+      if (error) throw error;
+      setApartados([...apartados, data[0]]);
+      setNuevoApartado({ nombre: '', meta: '' });
+    } catch (err) {
+      alert('Error al crear apartado: ' + err.message);
+    }
+  };
+
+  // ABONAR MONTO PERSONALIZADO AL APARTADO Y RESTAR DEL BALANCE GENERAL
+  const handleAbonarApartado = async (apartado) => {
+    const montoPersonalizado = parseFloat(montosApartados[apartado.id]);
+
+    if (!montoPersonalizado || montoPersonalizado <= 0) {
+      alert('Ingresa una cantidad válida mayor a 0');
+      return;
+    }
+
+    try {
+      // 1. Sumar al apartado
+      const nuevoActual = Number(apartado.actual || 0) + montoPersonalizado;
+      const { error: errApartado } = await supabase
+        .from('apartados')
+        .update({ actual: nuevoActual })
+        .eq('id', apartado.id);
+
+      if (errApartado) throw errApartado;
+
+      // 2. Registrar como Gasto para restar del balance general
+      const { data: nuevoMov, error: errMov } = await supabase
+        .from('movimientos')
+        .insert([
+          {
+            monto: montoPersonalizado,
+            tipo: 'gasto',
+            categoria: 'Apartado',
+            descripcion: `Abono a apartado: ${apartado.nombre}`,
+            dispositivo
           }
-        }
-        return {
-          ...item,
-          esConstante: esConstanteVal,
-          diasSemana: diasVal,
-          hora24: horaVal
-        };
-      });
-      setRecurrentes(procesados);
-    }
-    if (error) console.error("Error cargando recurrentes:", error);
-  };
+        ]).select();
 
-  const fetchApartados = async () => {
-    const { data, error } = await supabase.from('apartados').select('*');
-    if (data) setApartados(data);
-    if (error) console.error("Error cargando apartados:", error);
-  };
+      if (errMov) throw errMov;
 
-  const guardarDispositivo = (nombre: string) => {
-    setDispositivo(nombre);
-    localStorage.setItem('finanzas_dispositivo', nombre);
-  };
+      // Actualizar estados locales
+      setApartados(apartados.map(a => a.id === apartado.id ? { ...a, actual: nuevoActual } : a));
+      setMovimientos([nuevoMov[0], ...movimientos]);
+      setMontosApartados({ ...montosApartados, [apartado.id]: '' });
 
-  const obtenerHora24 = (hora12: string, formatoAMPM: 'AM' | 'PM') => {
-    let [h, m] = hora12.split(':').map(Number);
-    if (formatoAMPM === 'PM' && h < 12) h += 12;
-    if (formatoAMPM === 'AM' && h === 12) h = 0;
-    return `${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
-  };
-
-  const procesarRecurrentesAutomaticos = async () => {
-    const ahoraUtc = new Date();
-    const ahoraUtc7 = new Date(ahoraUtc.getTime() - 7 * 60 * 60 * 1000);
-
-    const diaSemanaActual = ahoraUtc7.getUTCDay();
-    const horaActualStr = `${String(ahoraUtc7.getUTCHours()).padStart(2, '0')}:${String(ahoraUtc7.getUTCMinutes()).padStart(2, '0')}`;
-    const fechaHoyStr = ahoraUtc7.toISOString().split('T')[0];
-
-    for (const rec of recurrentes) {
-      if (rec.esConstante && rec.diasSemana && rec.diasSemana.includes(diaSemanaActual)) {
-        const horaEjecucion = rec.hora24 || '08:00';
-        
-        if (horaActualStr >= horaEjecucion && rec.ultimo_procesado !== fechaHoyStr) {
-          await supabase.from('movimientos').insert([{
-            monto: rec.monto,
-            tipo: rec.tipo || 'ingreso',
-            categoria: rec.categoria,
-            descripcion: `[Entrada Automática] ${rec.titulo}`,
-            dispositivo: 'Auto UTC-7'
-          }]);
-
-          await supabase.from('recurrentes').update({ ultimo_procesado: fechaHoyStr }).eq('id', rec.id);
-        }
-      }
+    } catch (err) {
+      alert('Error al ingresar al apartado: ' + err.message);
     }
   };
 
-  const agregarMovimiento = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!monto || parseFloat(monto) <= 0) return;
-
-    const { error } = await supabase.from('movimientos').insert([{
-      monto: parseFloat(monto),
-      tipo,
-      categoria,
-      descripcion,
-      dispositivo
-    }]);
-
-    if (!error) {
-      setMonto('');
-      setDescripcion('');
-      fetchMovimientos();
-    } else {
-      alert("Error al guardar el registro: " + error.message);
+  const eliminarMovimiento = async (id) => {
+    if (!confirm('¿Seguro de eliminar este registro?')) return;
+    try {
+      await supabase.from('movimientos').delete().eq('id', id);
+      setMovimientos(movimientos.filter(m => m.id !== id));
+    } catch (err) {
+      alert('Error al eliminar: ' + err.message);
     }
-  };
-
-  const borrarMovimiento = async (id: string) => {
-    const { error } = await supabase.from('movimientos').delete().eq('id', id);
-    if (!error) fetchMovimientos();
-  };
-
-  const alternarDiaSeleccionado = (diaId: number) => {
-    if (diasSeleccionados.includes(diaId)) {
-      setDiasSeleccionados(diasSeleccionados.filter(id => id !== diaId));
-    } else {
-      setDiasSeleccionados([...diasSeleccionados, diaId]);
-    }
-  };
-
-  const guardarOActualizarRecurrente = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tituloRecurrente || !montoRecurrente) return;
-
-    const hora24 = obtenerHora24(horaProgramada, ampm);
-    const metadataFrecuencia = JSON.stringify({
-      esConstante,
-      diasSemana: diasSeleccionados,
-      hora24
-    });
-
-    const payload = {
-      titulo: tituloRecurrente,
-      monto: parseFloat(montoRecurrente),
-      tipo: 'ingreso',
-      frecuencia: metadataFrecuencia,
-      categoria: catRecurrente
-    };
-
-    let resError = null;
-
-    if (idEditando) {
-      const { error } = await supabase.from('recurrentes').update(payload).eq('id', idEditando);
-      resError = error;
-    } else {
-      const { error } = await supabase.from('recurrentes').insert([payload]);
-      resError = error;
-    }
-
-    if (!resError) {
-      cancelarEdicionRecurrente();
-      fetchRecurrentes();
-    } else {
-      alert("Error al guardar la entrada de dinero: " + resError.message);
-    }
-  };
-
-  const cargarParaEditarRecurrente = (rec: Recurrente) => {
-    setIdEditando(rec.id || null);
-    setTituloRecurrente(rec.titulo);
-    setMontoRecurrente(rec.monto.toString());
-    setEsConstante(rec.esConstante ?? true);
-    setDiasSeleccionados(rec.diasSemana || [3]);
-    setCatRecurrente(rec.categoria);
-  };
-
-  const cancelarEdicionRecurrente = () => {
-    setIdEditando(null);
-    setTituloRecurrente('');
-    setMontoRecurrente('');
-    setEsConstante(true);
-    setDiasSeleccionados([3]);
-  };
-
-  const borrarRecurrente = async (id: string) => {
-    const { error } = await supabase.from('recurrentes').delete().eq('id', id);
-    if (!error) fetchRecurrentes();
-  };
-
-  const ejecutarEntradaManual = async (rec: Recurrente) => {
-    const { error } = await supabase.from('movimientos').insert([{
-      monto: rec.monto,
-      tipo: 'ingreso',
-      categoria: rec.categoria,
-      descripcion: `[Entrada Registrada] ${rec.titulo}`,
-      dispositivo
-    }]);
-
-    if (!error) {
-      alert(`¡Entrada de $${rec.monto} añadida al saldo con éxito!`);
-      fetchMovimientos();
-    }
-  };
-
-  const agregarApartado = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nombreApartado || !metaApartado) return;
-
-    const { error } = await supabase.from('apartados').insert([{
-      nombre: nombreApartado,
-      meta: parseFloat(metaApartado),
-      actual: 0
-    }]);
-
-    if (!error) {
-      setNombreApartado('');
-      setMetaApartado('');
-      fetchApartados();
-    }
-  };
-
-  const abonarApartado = async (id: string, actual: number, abono: number) => {
-    if (abono <= 0) return;
-    await supabase.from('apartados').update({ actual: actual + abono }).eq('id', id);
-    fetchApartados();
-  };
-
-  const borrarApartado = async (id: string) => {
-    await supabase.from('apartados').delete().eq('id', id);
-    fetchApartados();
-  };
-
-  const calcularBalanceTotal = () => {
-    return movimientos.reduce((acc, mov) => {
-      return mov.tipo === 'ingreso' ? acc + mov.monto : acc - mov.monto;
-    }, 0);
   };
 
   return (
-    <div style={{ maxWidth: '480px', margin: '0 auto', padding: '16px', fontFamily: 'sans-serif', backgroundColor: '#121212', color: '#f1f1f1', minHeight: '100vh' }}>
-      
-      {/* CABECERA Y SELECCIÓN DE DISPOSITIVO */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', background: '#1e1e1e', padding: '12px', borderRadius: '12px' }}>
-        <div>
-          <span style={{ fontSize: '12px', color: '#aaa' }}>Balance disponible</span>
-          <h2 style={{ margin: 0, fontSize: '28px', color: calcularBalanceTotal() >= 0 ? '#4caf50' : '#f44336' }}>
-            ${calcularBalanceTotal().toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-          </h2>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '11px', color: '#aaa', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Smartphone size={12} /> Dispositivo:
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-20">
+      {/* HEADER */}
+      <header className="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-10">
+        <div className="max-w-md mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Wallet className="text-emerald-400" />
+            <h1 className="font-bold text-lg text-white">Finanzas Compartidas</h1>
           </div>
-          <select 
-            value={dispositivo} 
-            onChange={(e) => guardarDispositivo(e.target.value)}
-            style={{ background: '#2d2d2d', color: '#fff', border: 'none', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', marginTop: '4px' }}
-          >
-            <option value="Él">Él</option>
-            <option value="Ella">Ella</option>
-          </select>
-        </div>
-      </div>
-
-      {/* MENÚ DE NAVEGACIÓN DE PESTAÑAS */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        <button 
-          onClick={() => setPestana('inicio')}
-          style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: pestana === 'inicio' ? '#3b82f6' : '#2d2d2d', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-        >
-          <Wallet size={16} /> Inicio
-        </button>
-        <button 
-          onClick={() => setPestana('apartados')}
-          style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: pestana === 'apartados' ? '#3b82f6' : '#2d2d2d', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-        >
-          <Layers size={16} /> Apartados
-        </button>
-        <button 
-          onClick={() => setPestana('admin')}
-          style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: pestana === 'admin' ? '#3b82f6' : '#2d2d2d', color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-        >
-          <Clock size={16} /> Entradas
-        </button>
-      </div>
-
-      {/* PESTAÑA INICIO - REGISTRO RÁPIDO Y HISTORIAL */}
-      {pestana === 'inicio' && (
-        <>
-          <form onSubmit={agregarMovimiento} style={{ background: '#1e1e1e', padding: '16px', borderRadius: '12px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <button
-                type="button"
-                onClick={() => { setTipo('gasto'); setCategoria(CATEGORIAS_GASTO[0]); }}
-                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: tipo === 'gasto' ? '#ef4444' : '#2d2d2d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-              >
-                <ArrowDownCircle size={16} /> - Gasto
-              </button>
-              <button
-                type="button"
-                onClick={() => { setTipo('ingreso'); setCategoria(CATEGORIAS_INGRESO[0]); }}
-                style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: tipo === 'ingreso' ? '#10b981' : '#2d2d2d', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
-              >
-                <ArrowUpCircle size={16} /> + Ingreso
-              </button>
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#aaa' }}>Monto ($)</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                value={monto} 
-                onChange={(e) => setMonto(e.target.value)} 
-                placeholder="0.00"
-                style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', fontSize: '18px', boxSizing: 'border-box' }}
-                required
-              />
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#aaa' }}>Categoría</label>
-              <select 
-                value={categoria} 
-                onChange={(e) => setCategoria(e.target.value)}
-                style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-              >
-                {(tipo === 'gasto' ? CATEGORIAS_GASTO : CATEGORIAS_INGRESO).map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#aaa' }}>Descripción (Opcional)</label>
-              <input 
-                type="text" 
-                value={descripcion} 
-                onChange={(e) => setDescripcion(e.target.value)} 
-                placeholder="Ej. Tacos, recibo..."
-                style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            <button type="submit" style={{ width: '100%', padding: '12px', background: tipo === 'gasto' ? '#ef4444' : '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '16px' }}>
-              Registrar {tipo === 'gasto' ? 'Gasto' : 'Ingreso'}
+          <div className="flex bg-slate-700 p-1 rounded-lg">
+            <button 
+              onClick={() => setDispositivo('Él')}
+              className={`px-3 py-1 text-xs rounded-md font-medium transition ${dispositivo === 'Él' ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}
+            >
+              Él
             </button>
-          </form>
-
-          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Historial de Movimientos</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {movimientos.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No hay movimientos guardados aún.</p>
-            ) : (
-              movimientos.map(mov => (
-                <div key={mov.id} style={{ background: '#1e1e1e', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{mov.categoria}</div>
-                    <div style={{ fontSize: '12px', color: '#aaa' }}>{mov.descripcion || 'Sin descripción'}</div>
-                    <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{mov.dispositivo} • {new Date(mov.created_at || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '16px', color: mov.tipo === 'ingreso' ? '#10b981' : '#ef4444' }}>
-                      {mov.tipo === 'ingreso' ? '+' : '-'}${mov.monto.toFixed(2)}
-                    </div>
-                    {mov.id && (
-                      <button onClick={() => borrarMovimiento(mov.id!)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
+            <button 
+              onClick={() => setDispositivo('Ella')}
+              className={`px-3 py-1 text-xs rounded-md font-medium transition ${dispositivo === 'Ella' ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}
+            >
+              Ella
+            </button>
           </div>
-        </>
-      )}
+        </div>
+      </header>
 
-      {/* PESTAÑA ENTRADAS DE DINERO PROGRAMADAS / MANUALES */}
-      {pestana === 'admin' && (
-        <>
-          <div style={{ background: '#1e1e1e', padding: '16px', borderRadius: '12px', marginBottom: '20px' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Clock size={18} /> {idEditando ? 'Editar Entrada de Dinero' : 'Registrar Entrada de Dinero'}
-            </h3>
+      {/* CONTENIDO PRINCIPAL */}
+      <main className="max-w-md mx-auto p-4 space-y-6">
 
-            <form onSubmit={guardarOActualizarRecurrente}>
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa' }}>Nombre del Ingreso</label>
-                <input 
-                  type="text" 
-                  value={tituloRecurrente} 
-                  onChange={(e) => setTituloRecurrente(e.target.value)} 
-                  placeholder="Ej. Trabajo Fábrica, Trabajo Extra..."
-                  style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-                  required
-                />
+        {/* RESUMEN DE BALANCE */}
+        <div className="bg-gradient-to-br from-slate-800 to-slate-800/80 p-5 rounded-2xl border border-slate-700/60 shadow-xl">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Balance Total</span>
+          <div className="text-3xl font-extrabold text-white mt-1">
+            ${balanceGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-700/50">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+                <ArrowUpRight size={18} />
               </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa' }}>Monto Aportado ($)</label>
-                <input 
-                  type="number" 
-                  step="0.01" 
-                  value={montoRecurrente} 
-                  onChange={(e) => setMontoRecurrente(e.target.value)} 
-                  placeholder="0.00"
-                  style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-                  required
-                />
+              <div>
+                <div className="text-xs text-slate-400">Ingresos</div>
+                <div className="text-sm font-bold text-emerald-400">+${totalIngresos.toLocaleString()}</div>
               </div>
-
-              {/* TIPO DE ENTRADA: CONSTANTE O MANUAL */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Frecuencia de la Entrada</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setEsConstante(true)}
-                    style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: esConstante ? '#10b981' : '#2d2d2d', color: '#fff', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    🔄 Constante (Semanal)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEsConstante(false)}
-                    style={{ flex: 1, padding: '8px', borderRadius: '6px', border: 'none', background: !esConstante ? '#3b82f6' : '#2d2d2d', color: '#fff', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    🖐️ No Constante (Manual)
-                  </button>
-                </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-rose-500/10 text-rose-400 rounded-lg">
+                <ArrowDownRight size={18} />
               </div>
+              <div>
+                <div className="text-xs text-slate-400">Gastos</div>
+                <div className="text-sm font-bold text-rose-400">-${totalGastos.toLocaleString()}</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-              {/* CONFIGURACIÓN DÍAS Y HORA SI ES CONSTANTE */}
-              {esConstante && (
-                <>
-                  <div style={{ marginBottom: '12px' }}>
-                    <label style={{ fontSize: '12px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Días de la semana que se registrará:</label>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'space-between' }}>
-                      {DIAS_SEMANA.map(dia => {
-                        const seleccionado = diasSeleccionados.includes(dia.id);
-                        return (
-                          <button
-                            type="button"
-                            key={dia.id}
-                            onClick={() => alternarDiaSeleccionado(dia.id)}
-                            style={{
-                              flex: 1,
-                              padding: '8px 0',
-                              borderRadius: '6px',
-                              border: 'none',
-                              background: seleccionado ? '#3b82f6' : '#2d2d2d',
-                              color: '#fff',
-                              fontSize: '12px',
-                              fontWeight: 'bold',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {dia.nombre}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: '12px' }}>
-                    <label style={{ fontSize: '12px', color: '#aaa' }}>Hora de ejecución automática (UTC-7)</label>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                      <input 
-                        type="time" 
-                        value={horaProgramada} 
-                        onChange={(e) => setHoraProgramada(e.target.value)}
-                        style={{ flex: 2, padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
-                      />
-                      <select 
-                        value={ampm} 
-                        onChange={(e) => setAmpm(e.target.value as 'AM' | 'PM')}
-                        style={{ flex: 1, padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box', fontWeight: 'bold' }}
-                      >
-                        <option value="AM">AM</option>
-                        <option value="PM">PM</option>
-                      </select>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '12px', color: '#aaa' }}>Categoría</label>
-                <select 
-                  value={catRecurrente} 
-                  onChange={(e) => setCatRecurrente(e.target.value)}
-                  style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
+        {/* VISTA 1: DASHBOARD / NUEVO REGISTRO */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            <form onSubmit={handleGuardarMovimiento} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
+              <h2 className="font-semibold text-sm text-slate-300">Registrar Movimiento</h2>
+              
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNuevoMovimiento({ ...nuevoMovimiento, tipo: 'gasto' })}
+                  className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-1 ${nuevoMovimiento.tipo === 'gasto' ? 'bg-rose-600 text-white' : 'bg-slate-700 text-slate-400'}`}
                 >
-                  {CATEGORIAS_INGRESO.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="submit" style={{ flex: 1, padding: '12px', background: idEditando ? '#f59e0b' : '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>
-                  {idEditando ? 'Guardar Cambios' : 'Guardar Entrada'}
+                  <MinusCircle size={16} /> Gasto
                 </button>
-                {idEditando && (
-                  <button type="button" onClick={cancelarEdicionRecurrente} style={{ padding: '12px', background: '#444', color: '#fff', border: 'none', borderRadius: '8px' }}>
-                    Cancelar
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setNuevoMovimiento({ ...nuevoMovimiento, tipo: 'ingreso' })}
+                  className={`flex-1 py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-1 ${nuevoMovimiento.tipo === 'ingreso' ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-400'}`}
+                >
+                  <PlusCircle size={16} /> Ingreso
+                </button>
               </div>
+
+              <div>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Monto $"
+                  value={nuevoMovimiento.monto}
+                  onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, monto: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xl font-bold text-white focus:outline-none focus:border-emerald-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={nuevoMovimiento.categoria}
+                  onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, categoria: e.target.value })}
+                  className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-200"
+                >
+                  <option value="Comida">Comida</option>
+                  <option value="Super">Súper</option>
+                  <option value="Servicios">Servicios</option>
+                  <option value="Entretenimiento">Entretenimiento</option>
+                  <option value="Sueldo">Sueldo</option>
+                  <option value="Otros">Otros</option>
+                </select>
+
+                <input
+                  type="text"
+                  placeholder="Descripción (opcional)"
+                  value={nuevoMovimiento.descripcion}
+                  onChange={(e) => setNuevoMovimiento({ ...nuevoMovimiento, descripcion: e.target.value })}
+                  className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-slate-200"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-emerald-500 hover:bg-emerald-600 font-bold text-slate-900 py-3 rounded-lg transition"
+              >
+                Guardar Registro
+              </button>
             </form>
-          </div>
 
-          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Lista de Entradas Registradas</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {recurrentes.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No hay entradas de dinero guardadas aún.</p>
-            ) : (
-              recurrentes.map(rec => (
-                <div key={rec.id} style={{ background: '#1e1e1e', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{rec.titulo}</div>
-                    {rec.esConstante ? (
-                      <>
-                        <div style={{ fontSize: '12px', color: '#10b981' }}>
-                          🔄 Constante: {rec.diasSemana?.map(d => DIAS_SEMANA.find(item => item.id === d)?.nombre).join(', ')}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#aaa' }}>Hora: {rec.hora24} (UTC-7)</div>
-                      </>
-                    ) : (
-                      <div style={{ fontSize: '12px', color: '#3b82f6' }}>
-                        🖐️ No Constante (Se aplica de forma manual)
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#10b981' }}>+${rec.monto.toFixed(2)}</div>
-                    
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px', justifyContent: 'flex-end' }}>
-                      {!rec.esConstante && (
-                        <button 
-                          onClick={() => ejecutarEntradaManual(rec)}
-                          title="Registrar esta entrada ahora"
-                          style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-                        >
-                          <CheckCircle2 size={12} /> Sumar
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => cargarParaEditarRecurrente(rec)}
-                        style={{ background: '#2d2d2d', color: '#f59e0b', border: '1px solid #444', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}
-                      >
-                        <Edit2 size={12} />
-                      </button>
-                      <button 
-                        onClick={() => rec.id && borrarRecurrente(rec.id)}
-                        style={{ background: '#2d2d2d', color: '#ef4444', border: '1px solid #444', borderRadius: '4px', padding: '4px', cursor: 'pointer' }}
-                      >
-                        <Trash2 size={12} />
+            {/* HISTORIAL RECIENTE */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm text-slate-400">Últimos Movimientos</h3>
+              <div className="space-y-2">
+                {movimientos.slice(0, 5).map((m) => (
+                  <div key={m.id} className="bg-slate-800/60 border border-slate-700/50 p-3 rounded-xl flex justify-between items-center">
+                    <div>
+                      <div className="font-medium text-sm text-white">{m.categoria}</div>
+                      <div className="text-xs text-slate-400">{m.descripcion || m.dispositivo}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`font-bold text-sm ${m.tipo === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {m.tipo === 'ingreso' ? '+' : '-'}${Number(m.monto).toLocaleString()}
+                      </span>
+                      <button onClick={() => eliminarMovimiento(m.id)} className="text-slate-500 hover:text-rose-400">
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
+                ))}
+              </div>
+            </div>
           </div>
-        </>
-      )}
+        )}
 
-      {/* PESTAÑA APARTADOS DE AHORRO */}
-      {pestana === 'apartados' && (
-        <>
-          <form onSubmit={agregarApartado} style={{ background: '#1e1e1e', padding: '16px', borderRadius: '12px', marginBottom: '20px' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FolderPlus size={18} /> Crear Nuevo Apartado
-            </h3>
-            
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#aaa' }}>Nombre de la Meta</label>
-              <input 
-                type="text" 
-                value={nombreApartado} 
-                onChange={(e) => setNombreApartado(e.target.value)} 
-                placeholder="Ej. Salida Fin de Semana, Renta..."
-                style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
+        {/* VISTA 2: APARTADOS (CON MONTO PERSONALIZADO) */}
+        {activeTab === 'apartados' && (
+          <div className="space-y-6">
+            <form onSubmit={handleGuardarApartado} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+              <h2 className="font-semibold text-sm text-slate-300">Crear Nuevo Apartado</h2>
+              <input
+                type="text"
+                placeholder="Nombre (ej. Vacaciones, Meta)"
+                value={nuevoApartado.nombre}
+                onChange={(e) => setNuevoApartado({ ...nuevoApartado, nombre: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white"
                 required
               />
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#aaa' }}>Meta de Ahorro ($)</label>
-              <input 
-                type="number" 
-                value={metaApartado} 
-                onChange={(e) => setMetaApartado(e.target.value)} 
-                placeholder="0.00"
-                style={{ width: '100%', padding: '10px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '6px', color: '#fff', boxSizing: 'border-box' }}
+              <input
+                type="number"
+                placeholder="Meta de ahorro $"
+                value={nuevoApartado.meta}
+                onChange={(e) => setNuevoApartado({ ...nuevoApartado, meta: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white"
                 required
               />
-            </div>
+              <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 font-bold text-slate-900 py-2.5 rounded-lg text-sm">
+                Crear Apartado
+              </button>
+            </form>
 
-            <button type="submit" style={{ width: '100%', padding: '12px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>
-              Crear Apartado
-            </button>
-          </form>
+            {/* LISTA DE APARTADOS */}
+            <div className="space-y-4">
+              {apartados.map((item) => {
+                const porcentaje = Math.min(Math.round(((item.actual || 0) / item.meta) * 100), 100);
 
-          <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>Mis Apartados</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {apartados.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '14px', textAlign: 'center' }}>No tienes apartados creados.</p>
-            ) : (
-              apartados.map(ap => {
-                const porcentaje = Math.min(100, Math.round((ap.actual / ap.meta) * 100));
                 return (
-                  <div key={ap.id} style={{ background: '#1e1e1e', padding: '14px', borderRadius: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontWeight: 'bold' }}>{ap.nombre}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '14px', color: '#aaa' }}>${ap.actual.toFixed(2)} / ${ap.meta.toFixed(2)}</span>
-                        {ap.id && (
-                          <button onClick={() => borrarApartado(ap.id!)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
+                  <div key={item.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-white">{item.nombre}</h3>
+                      <span className="text-xs font-semibold text-slate-400">
+                        ${(item.actual || 0).toLocaleString()} / ${Number(item.meta).toLocaleString()}
+                      </span>
                     </div>
 
-                    <div style={{ width: '100%', background: '#2d2d2d', height: '8px', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
-                      <div style={{ width: `${porcentaje}%`, background: '#3b82f6', height: '100%' }}></div>
+                    {/* Barra de Progreso */}
+                    <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-emerald-500 h-full transition-all duration-300"
+                        style={{ width: `${porcentaje}%` }}
+                      ></div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <button 
-                        onClick={() => ap.id && abonarApartado(ap.id, ap.actual, 100)}
-                        style={{ flex: 1, padding: '6px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
+                    <div className="flex justify-between text-xs text-slate-400">
+                      <span>Progreso: {porcentaje}%</span>
+                      <span>Restante: ${(item.meta - (item.actual || 0)).toLocaleString()}</span>
+                    </div>
+
+                    {/* CAMPO PERSONALIZADO Y BOTÓN INGRESAR */}
+                    <div className="flex gap-2 pt-2">
+                      <input
+                        type="number"
+                        placeholder="Monto a abonar $"
+                        value={montosApartados[item.id] || ''}
+                        onChange={(e) => setMontosApartados({ ...montosApartados, [item.id]: e.target.value })}
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                        min="1"
+                      />
+                      <button
+                        onClick={() => handleAbonarApartado(item)}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-4 py-2 rounded-lg text-sm whitespace-nowrap"
                       >
-                        +$100
-                      </button>
-                      <button 
-                        onClick={() => ap.id && abonarApartado(ap.id, ap.actual, 500)}
-                        style={{ flex: 1, padding: '6px', background: '#2d2d2d', border: '1px solid #444', borderRadius: '4px', color: '#fff', fontSize: '12px' }}
-                      >
-                        +$500
+                        Ingresar
                       </button>
                     </div>
                   </div>
                 );
-              })
-            )}
+              })}
+            </div>
           </div>
-        </>
-      )}
+        )}
 
+        {/* VISTA 3: RECURRENTES */}
+        {activeTab === 'recurrentes' && (
+          <div className="space-y-6">
+            <form onSubmit={handleGuardarRecurrente} className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+              <h2 className="font-semibold text-sm text-slate-300">Nuevo Pago/Ingreso Recurrente</h2>
+              <input
+                type="text"
+                placeholder="Título (ej. Renta, Nómina)"
+                value={nuevoRecurrente.titulo}
+                onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, titulo: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white"
+                required
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  placeholder="Monto $"
+                  value={nuevoRecurrente.monto}
+                  onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, monto: e.target.value })}
+                  className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white"
+                  required
+                />
+                <select
+                  value={nuevoRecurrente.frecuencia}
+                  onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, frecuencia: e.target.value })}
+                  className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white"
+                >
+                  <option value="semanal">Semanal</option>
+                  <option value="quincenal">Quincenal</option>
+                  <option value="mensual">Mensual</option>
+                </select>
+              </div>
+              <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 font-bold text-slate-900 py-2.5 rounded-lg text-sm">
+                Guardar Recurrente
+              </button>
+            </form>
+
+            <div className="space-y-2">
+              {recurrentes.map((r) => (
+                <div key={r.id} className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
+                  <div>
+                    <div className="font-semibold text-white text-sm">{r.titulo}</div>
+                    <div className="text-xs text-slate-400 capitalize">{r.frecuencia}</div>
+                  </div>
+                  <div className="font-bold text-emerald-400 text-sm">${Number(r.monto).toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* NAVEGACIÓN INFERIOR */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 p-2">
+        <div className="max-w-md mx-auto flex justify-around">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-lg text-xs font-medium ${activeTab === 'dashboard' ? 'text-emerald-400' : 'text-slate-400'}`}
+          >
+            <PieChart size={20} /> Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('apartados')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-lg text-xs font-medium ${activeTab === 'apartados' ? 'text-emerald-400' : 'text-slate-400'}`}
+          >
+            <Target size={20} /> Apartados
+          </button>
+          <button
+            onClick={() => setActiveTab('recurrentes')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-lg text-xs font-medium ${activeTab === 'recurrentes' ? 'text-emerald-400' : 'text-slate-400'}`}
+          >
+            <Calendar size={20} /> Recurrentes
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }
