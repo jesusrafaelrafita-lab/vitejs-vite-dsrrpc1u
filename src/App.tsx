@@ -5,18 +5,30 @@ import {
   Calendar, 
   Target, 
   Trash2, 
+  Edit3,
   ArrowUpRight, 
   ArrowDownRight, 
   CreditCard, 
   TrendingDown, 
-  TrendingUp 
+  TrendingUp,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 
-// Credenciales corregidas
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://hglxhzxtwkxzefbfelkj.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const DIAS_SEMANA = [
+  { id: 1, nombre: 'Lunes' },
+  { id: 2, nombre: 'Martes' },
+  { id: 3, nombre: 'Miércoles' },
+  { id: 4, nombre: 'Jueves' },
+  { id: 5, nombre: 'Viernes' },
+  { id: 6, nombre: 'Sábado' },
+  { id: 7, nombre: 'Domingo' }
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -27,6 +39,7 @@ export default function App() {
   const [apartados, setApartados] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Formularios
   const [nuevoMovimiento, setNuevoMovimiento] = useState({
     monto: '',
     tipo: 'gasto',
@@ -34,12 +47,15 @@ export default function App() {
     descripcion: ''
   });
 
+  const [editandoRecurrenteId, setEditandoRecurrenteId] = useState(null);
   const [nuevoRecurrente, setNuevoRecurrente] = useState({
     titulo: '',
     monto: '',
     tipo: 'ingreso',
-    frecuencia: 'quincenal',
-    categoria: 'Sueldo'
+    frecuencia: 'semanal',
+    categoria: 'Sueldo',
+    dia_semana: 5, // Por defecto Viernes
+    hora: '17:00'
   });
 
   const [nuevoApartado, setNuevoApartado] = useState({
@@ -53,6 +69,14 @@ export default function App() {
     cargarDatos();
   }, []);
 
+  // Verificar pagos automáticos cada minuto
+  useEffect(() => {
+    const timer = setInterval(() => {
+      procesarPagosAutomaticos();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [recurrentes, movimientos]);
+
   const cargarDatos = async () => {
     setLoading(true);
     try {
@@ -60,18 +84,60 @@ export default function App() {
       const { data: recs } = await supabase.from('recurrentes').select('*');
       const { data: aparts } = await supabase.from('apartados').select('*');
 
-      if (errMovs) {
-        console.error('Error Supabase Movimientos:', errMovs);
-      } else if (movs) {
-        setMovimientos(movs);
-      }
-
+      if (errMovs) console.error('Error Supabase Movimientos:', errMovs);
+      if (movs) setMovimientos(movs);
       if (recs) setRecurrentes(recs);
       if (aparts) setApartados(aparts);
     } catch (err) {
       console.error('Error de red al conectar con Supabase:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Motor de Automatización Programada (Día y Hora)
+  const procesarPagosAutomaticos = async () => {
+    const ahora = new Date();
+    const diaActual = ahora.getDay() === 0 ? 7 : ahora.getDay(); // 1-7
+    const horaActual = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
+
+    for (const rec of recurrentes) {
+      const mismoDia = Number(rec.dia_semana) === diaActual;
+      const mismaHora = rec.hora === horaActual;
+
+      // Comprobar si no se procesó en la última hora para no duplicar
+      const ultimoProc = rec.ultimo_proceso ? new Date(rec.ultimo_proceso) : null;
+      const yaProcesadoHoy = ultimoProc && 
+        ultimoProc.getDate() === ahora.getDate() && 
+        ultimoProc.getMonth() === ahora.getMonth() &&
+        ultimoProc.getFullYear() === ahora.getFullYear() &&
+        ultimoProc.getHours() === ahora.getHours();
+
+      if (mismoDia && mismaHora && !yaProcesadoHoy) {
+        try {
+          // 1. Crear el movimiento automático
+          const { data: nuevoMov, error: errMov } = await supabase.from('movimientos').insert([
+            {
+              monto: parseFloat(rec.monto),
+              tipo: rec.tipo,
+              categoria: rec.categoria || 'Programado',
+              descripcion: `[Automático] ${rec.titulo}`,
+              dispositivo: 'Auto'
+            }
+          ]).select();
+
+          if (!errMov && nuevoMov) {
+            setMovimientos(prev => [nuevoMov[0], ...prev]);
+
+            // 2. Marcar fecha de último proceso
+            const fechaIso = ahora.toISOString();
+            await supabase.from('recurrentes').update({ ultimo_proceso: fechaIso }).eq('id', rec.id);
+            setRecurrentes(prev => prev.map(r => r.id === rec.id ? { ...r, ultimo_proceso: fechaIso } : r));
+          }
+        } catch (e) {
+          console.error('Error al ejecutar pago automático:', e);
+        }
+      }
     }
   };
 
@@ -98,10 +164,7 @@ export default function App() {
         dispositivo: dispositivo
       };
 
-      const { data, error } = await supabase
-        .from('movimientos')
-        .insert([payload])
-        .select();
+      const { data, error } = await supabase.from('movimientos').insert([payload]).select();
 
       if (error) {
         alert(`Error Supabase (${error.code}): ${error.message}`);
@@ -117,20 +180,84 @@ export default function App() {
     }
   };
 
+  // Crear o Editar Pago Recurrente
   const handleGuardarRecurrente = async (e) => {
     e.preventDefault();
     if (!nuevoRecurrente.titulo || !nuevoRecurrente.monto) return;
 
-    try {
-      const { data, error } = await supabase.from('recurrentes').insert([
-        { ...nuevoRecurrente, monto: parseFloat(nuevoRecurrente.monto) }
-      ]).select();
+    const payload = {
+      titulo: nuevoRecurrente.titulo,
+      monto: parseFloat(nuevoRecurrente.monto),
+      tipo: nuevoRecurrente.tipo,
+      frecuencia: nuevoRecurrente.frecuencia,
+      categoria: nuevoRecurrente.categoria,
+      dia_semana: parseInt(nuevoRecurrente.dia_semana),
+      hora: nuevoRecurrente.hora
+    };
 
-      if (error) throw error;
-      setRecurrentes([...recurrentes, data[0]]);
-      setNuevoRecurrente({ titulo: '', monto: '', tipo: 'ingreso', frecuencia: 'quincenal', categoria: 'Sueldo' });
+    try {
+      if (editandoRecurrenteId) {
+        // Modo Edición
+        const { error } = await supabase.from('recurrentes').update(payload).eq('id', editandoRecurrenteId);
+        if (error) throw error;
+
+        setRecurrentes(recurrentes.map(r => r.id === editandoRecurrenteId ? { ...r, ...payload } : r));
+        setEditandoRecurrenteId(null);
+      } else {
+        // Modo Creación
+        const { data, error } = await supabase.from('recurrentes').insert([payload]).select();
+        if (error) throw error;
+        setRecurrentes([...recurrentes, data[0]]);
+      }
+
+      setNuevoRecurrente({
+        titulo: '',
+        monto: '',
+        tipo: 'ingreso',
+        frecuencia: 'semanal',
+        categoria: 'Sueldo',
+        dia_semana: 5,
+        hora: '17:00'
+      });
     } catch (err) {
-      alert('Error al guardar recurrente: ' + err.message);
+      alert('Error al guardar programación: ' + err.message);
+    }
+  };
+
+  const seleccionarParaEditarRecurrente = (r) => {
+    setEditandoRecurrenteId(r.id);
+    setNuevoRecurrente({
+      titulo: r.titulo,
+      monto: r.monto,
+      tipo: r.tipo || 'ingreso',
+      frecuencia: r.frecuencia || 'semanal',
+      categoria: r.categoria || 'Sueldo',
+      dia_semana: r.dia_semana || 5,
+      hora: r.hora || '17:00'
+    });
+  };
+
+  const cancelarEdicionRecurrente = () => {
+    setEditandoRecurrenteId(null);
+    setNuevoRecurrente({
+      titulo: '',
+      monto: '',
+      tipo: 'ingreso',
+      frecuencia: 'semanal',
+      categoria: 'Sueldo',
+      dia_semana: 5,
+      hora: '17:00'
+    });
+  };
+
+  const eliminarRecurrente = async (id) => {
+    if (!confirm('¿Seguro de eliminar este ingreso/gasto programado?')) return;
+    try {
+      await supabase.from('recurrentes').delete().eq('id', id);
+      setRecurrentes(recurrentes.filter(r => r.id !== id));
+      if (editandoRecurrenteId === id) cancelarEdicionRecurrente();
+    } catch (err) {
+      alert('Error al eliminar programado: ' + err.message);
     }
   };
 
@@ -216,7 +343,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* PERFIL SELECTOR */}
           <div className="flex bg-[#0F172A] p-1 rounded-full border border-slate-800">
             <button 
               onClick={() => setDispositivo('Él')}
@@ -250,7 +376,6 @@ export default function App() {
             ${balanceGeneral.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
           </div>
 
-          {/* RESUMEN INGRESOS Y GASTOS */}
           <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-800/80">
             <div className="flex items-center gap-3 bg-[#0F172A]/60 p-2.5 rounded-2xl border border-slate-800/50">
               <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
@@ -277,14 +402,12 @@ export default function App() {
         {/* CONTENIDO POR PESTAÑA */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* REGISTRO RÁPIDO */}
             <form onSubmit={handleGuardarMovimiento} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
               <div className="flex justify-between items-center">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Nuevo Movimiento</h2>
                 <span className="text-[11px] text-slate-400">Registrando como <b className="text-emerald-400">{dispositivo}</b></span>
               </div>
 
-              {/* TOGGLE TIPO */}
               <div className="grid grid-cols-2 gap-2 bg-[#0F172A] p-1 rounded-2xl border border-slate-800">
                 <button
                   type="button"
@@ -302,7 +425,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* CAMPO DE MONTO TIPO APP BANCA */}
               <div className="relative flex items-center">
                 <span className="absolute left-4 text-xl font-bold text-slate-500">$</span>
                 <input
@@ -347,7 +469,6 @@ export default function App() {
               </button>
             </form>
 
-            {/* HISTORIAL TIPO BANCA */}
             <div className="space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Actividad Reciente</h3>
               <div className="space-y-2.5">
@@ -422,7 +543,6 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* BARRA DE PROGRESO */}
                     <div className="space-y-1">
                       <div className="w-full bg-[#0F172A] h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
                         <div 
@@ -433,7 +553,6 @@ export default function App() {
                       <p className="text-[10px] text-slate-400 text-right font-bold">{porcentaje}% alcanzado</p>
                     </div>
 
-                    {/* ABONAR PERSONALIZADO */}
                     <div className="flex gap-2">
                       <input
                         type="number"
@@ -456,19 +575,52 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA RECURRENTES */}
+        {/* VISTA PROGRAMAR PAGOS / INGRESSOS CON DÍA Y HORA */}
         {activeTab === 'recurrentes' && (
           <div className="space-y-6">
-            <form onSubmit={handleGuardarRecurrente} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Programar Cargo / Ingreso</h2>
+            <form onSubmit={handleGuardarRecurrente} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {editandoRecurrenteId ? 'Editar Programación' : 'Programar Cargo / Ingreso'}
+                </h2>
+                {editandoRecurrenteId && (
+                  <button 
+                    type="button" 
+                    onClick={cancelarEdicionRecurrente} 
+                    className="text-[11px] text-rose-400 font-bold hover:underline"
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </div>
+
+              {/* TIPO */}
+              <div className="grid grid-cols-2 gap-2 bg-[#0F172A] p-1 rounded-2xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setNuevoRecurrente({ ...nuevoRecurrente, tipo: 'ingreso' })}
+                  className={`py-2 text-xs font-bold rounded-xl transition ${nuevoRecurrente.tipo === 'ingreso' ? 'bg-emerald-500 text-slate-950 shadow-lg' : 'text-slate-400'}`}
+                >
+                  Ingreso Automático
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNuevoRecurrente({ ...nuevoRecurrente, tipo: 'gasto' })}
+                  className={`py-2 text-xs font-bold rounded-xl transition ${nuevoRecurrente.tipo === 'gasto' ? 'bg-rose-500 text-white shadow-lg' : 'text-slate-400'}`}
+                >
+                  Gasto Automático
+                </button>
+              </div>
+
               <input
                 type="text"
-                placeholder="Concepto (ej. Renta, Trabajo)"
+                placeholder="Concepto (ej. Trabajo Penn, Renta)"
                 value={nuevoRecurrente.titulo}
                 onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, titulo: e.target.value })}
                 className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
                 required
               />
+
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="number"
@@ -479,32 +631,100 @@ export default function App() {
                   required
                 />
                 <select
-                  value={nuevoRecurrente.frecuencia}
-                  onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, frecuencia: e.target.value })}
+                  value={nuevoRecurrente.categoria}
+                  onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, categoria: e.target.value })}
                   className="bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500"
                 >
-                  <option value="semanal">Semanal</option>
-                  <option value="quincenal">Quincenal</option>
-                  <option value="mensual">Mensual</option>
+                  <option value="Sueldo">Sueldo</option>
+                  <option value="Servicios">Servicios</option>
+                  <option value="Comida">Comida</option>
+                  <option value="Entretenimiento">Entretenimiento</option>
+                  <option value="Otros">Otros</option>
                 </select>
               </div>
-              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs border border-slate-700">
-                Guardar Programación
+
+              {/* SELECCIÓN DE DÍA Y HORA */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Día de ejecución</label>
+                  <select
+                    value={nuevoRecurrente.dia_semana}
+                    onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, dia_semana: e.target.value })}
+                    className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    {DIAS_SEMANA.map(d => (
+                      <option key={d.id} value={d.id}>{d.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Hora de ejecución</label>
+                  <input
+                    type="time"
+                    value={nuevoRecurrente.hora}
+                    onChange={(e) => setNuevoRecurrente({ ...nuevoRecurrente, hora: e.target.value })}
+                    className="w-full bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3.5 rounded-2xl text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-500/20"
+              >
+                {editandoRecurrenteId ? 'Guardar Cambios' : 'Guardar Programación'}
               </button>
             </form>
 
-            <div className="space-y-2.5">
-              {recurrentes.map((r) => (
-                <div key={r.id} className="bg-[#1E293B] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
-                  <div>
-                    <p className="font-bold text-white text-sm">{r.titulo}</p>
-                    <p className="text-[11px] text-slate-400 capitalize">Frecuencia {r.frecuencia}</p>
-                  </div>
-                  <span className="font-black text-emerald-400 text-sm bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                    ${Number(r.monto).toLocaleString()}
-                  </span>
-                </div>
-              ))}
+            {/* LISTA DE PROGRAMADOS CON EDICIÓN Y ELIMINACIÓN */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 px-1">Ingresos / Gastos Programados</h3>
+              <div className="space-y-2.5">
+                {recurrentes.length === 0 && (
+                  <p className="text-center text-xs text-slate-500 py-4">No hay pagos programados configurados.</p>
+                )}
+                {recurrentes.map((r) => {
+                  const diaNom = DIAS_SEMANA.find(d => d.id === Number(r.dia_semana))?.nombre || 'Semanal';
+
+                  return (
+                    <div key={r.id} className="bg-[#1E293B] p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-white text-sm">{r.titulo}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                            <Clock size={11} /> {diaNom} {r.hora || '12:00'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 capitalize">{r.tipo || 'ingreso'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5">
+                        <span className={`font-black text-sm ${r.tipo === 'gasto' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {r.tipo === 'gasto' ? '-' : '+'}${Number(r.monto).toLocaleString()}
+                        </span>
+                        
+                        <button 
+                          onClick={() => seleccionarParaEditarRecurrente(r)} 
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-emerald-400 transition"
+                          title="Editar"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+
+                        <button 
+                          onClick={() => eliminarRecurrente(r.id)} 
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-rose-400 transition"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
