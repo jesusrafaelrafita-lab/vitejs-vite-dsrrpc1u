@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://hglxhzxtwkxzefbfelkj.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6IzEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnbHhoenh0d2t4emVmYmZlbGtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MzMwMjQsImV4cCI6MjEwNDQwOTAyNH0.tdZ0iNzV9utW-SA6olG9LOarUip3xK-bVUBR3gZa55I';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -78,7 +78,7 @@ export default function App() {
     }
     const timer = setInterval(() => {
       procesarPagosAutomaticos();
-    }, 10000); // Revisa cada 10 segundos
+    }, 10000);
     return () => clearInterval(timer);
   }, [recurrentes]);
 
@@ -99,23 +99,19 @@ export default function App() {
     }
   };
 
-  // Lógica mejorada de automatización: evalúa si ya pasó la hora programada en el día
   const procesarPagosAutomaticos = async () => {
     const ahora = new Date();
-    const diaActual = ahora.getDay() === 0 ? 7 : ahora.getDay(); // 1 (Lunes) - 7 (Domingo)
+    const diaActual = ahora.getDay() === 0 ? 7 : ahora.getDay();
     const minutosActuales = ahora.getHours() * 60 + ahora.getMinutes();
 
     for (const rec of recurrentes) {
       const mismoDia = Number(rec.dia_semana) === diaActual;
       
-      // Convertir hora "HH:MM" a minutos totales
       const [h, m] = (rec.hora || '12:00').split(':').map(Number);
       const minutosProgramados = h * 60 + m;
 
-      // Si hoy es el día y la hora programada ya pasó o es la actual
       const horaYaPasoOCoincide = minutosActuales >= minutosProgramados;
 
-      // Verificar si ya fue procesado el día de hoy
       const ultimoProc = rec.ultimo_proceso ? new Date(rec.ultimo_proceso) : null;
       const yaProcesadoHoy = ultimoProc && 
         ultimoProc.getDate() === ahora.getDate() && 
@@ -124,7 +120,6 @@ export default function App() {
 
       if (mismoDia && horaYaPasoOCoincide && !yaProcesadoHoy) {
         try {
-          // 1. Insertar automáticamente en Movimientos
           const { data: nuevoMov, error: errMov } = await supabase.from('movimientos').insert([
             {
               monto: parseFloat(rec.monto),
@@ -138,7 +133,6 @@ export default function App() {
           if (!errMov && nuevoMov) {
             setMovimientos(prev => [nuevoMov[0], ...prev]);
 
-            // 2. Marcar como procesado hoy
             const fechaIso = ahora.toISOString();
             await supabase.from('recurrentes').update({ ultimo_proceso: fechaIso }).eq('id', rec.id);
             setRecurrentes(prev => prev.map(r => r.id === rec.id ? { ...r, ultimo_proceso: fechaIso } : r));
@@ -185,7 +179,6 @@ export default function App() {
     }
   };
 
-  // Crear o Editar Pago Recurrente
   const handleGuardarRecurrente = async (e) => {
     e.preventDefault();
     if (!nuevoRecurrente.titulo || !nuevoRecurrente.monto) return;
@@ -223,7 +216,6 @@ export default function App() {
         hora: '12:00'
       });
       
-      // Forzar verificación inmediata al guardar
       setTimeout(() => procesarPagosAutomaticos(), 500);
 
     } catch (err) {
@@ -255,14 +247,12 @@ export default function App() {
     }
   };
 
-  // Crear o Editar Apartados / Bóvedas
   const handleGuardarApartado = async (e) => {
     e.preventDefault();
     if (!nuevoApartado.nombre || !nuevoApartado.meta) return;
 
     try {
       if (editandoApartadoId) {
-        // Editar Meta / Nombre
         const payload = {
           nombre: nuevoApartado.nombre,
           meta: parseFloat(nuevoApartado.meta)
@@ -273,7 +263,6 @@ export default function App() {
         setApartados(apartados.map(a => a.id === editandoApartadoId ? { ...a, ...payload } : a));
         setEditandoApartadoId(null);
       } else {
-        // Crear
         const { data, error } = await supabase.from('apartados').insert([
           { nombre: nuevoApartado.nombre, meta: parseFloat(nuevoApartado.meta), actual: 0 }
         ]).select();
@@ -364,7 +353,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0F172A] text-slate-100 font-sans pb-28 antialiased">
-      {/* HEADER BANCA MÓVIL */}
       <header className="bg-[#1E293B]/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30 px-5 py-4">
         <div className="max-w-md mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -394,10 +382,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
       <main className="max-w-md mx-auto px-4 pt-5 space-y-6">
 
-        {/* TARJETA BANCARIA DE BALANCE */}
         <div className="relative bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#1E293B] p-6 rounded-3xl border border-slate-800 shadow-2xl">
           <div className="flex justify-between items-center text-xs font-semibold text-slate-400 uppercase tracking-widest">
             <span>Balance Disponible</span>
@@ -433,7 +419,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* CONTENIDO POR PESTAÑA */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             <form onSubmit={handleGuardarMovimiento} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
@@ -535,7 +520,6 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA APARTADOS / BÓVEDAS CON EDICIÓN Y ELIMINACIÓN */}
         {activeTab === 'apartados' && (
           <div className="space-y-6">
             <form onSubmit={handleGuardarApartado} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
@@ -643,7 +627,6 @@ export default function App() {
           </div>
         )}
 
-        {/* VISTA PROGRAMAR PAGOS / INGRESOS */}
         {activeTab === 'recurrentes' && (
           <div className="space-y-6">
             <form onSubmit={handleGuardarRecurrente} className="bg-[#1E293B] p-5 rounded-3xl border border-slate-800 space-y-4 shadow-xl">
@@ -662,7 +645,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* TIPO */}
               <div className="grid grid-cols-2 gap-2 bg-[#0F172A] p-1 rounded-2xl border border-slate-800">
                 <button
                   type="button"
@@ -711,7 +693,6 @@ export default function App() {
                 </select>
               </div>
 
-              {/* SELECCIÓN DE DÍA Y HORA */}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div>
                   <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Día de ejecución</label>
@@ -797,7 +778,6 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA DE NAVEGACIÓN INFERIOR */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#1E293B]/90 backdrop-blur-md border-t border-slate-800 py-3 px-6 z-30">
         <div className="max-w-md mx-auto flex justify-around items-center">
           <button
